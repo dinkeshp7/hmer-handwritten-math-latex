@@ -81,10 +81,10 @@ class PageLineSegmenter:
         for cnt in contours:
             x, y, w, h = cv2.boundingRect(cnt)
             
-            # Filter margin noise (top 5% header margin or tiny noise dots)
-            if y < int(h_page * 0.05) and h < 30:
+            # Filter printed header margin instructions (top 15% of page, e.g. "NEATLY write name...")
+            if y < int(h_page * 0.14) and h < 90:
                 continue
-            if h < self.min_line_height or w < 30:
+            if h < self.min_line_height or w < 40:
                 continue
 
             raw_regions.append((x, y, w, h))

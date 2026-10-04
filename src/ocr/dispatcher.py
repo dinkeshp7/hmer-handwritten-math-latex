@@ -8,6 +8,7 @@ Routes region crops to:
 
 from dataclasses import dataclass
 from typing import List, Dict, Any, Optional
+import os
 import numpy as np
 import cv2
 
@@ -16,6 +17,7 @@ from src.ocr.text_ocr import HandwrittenTextOCR
 from src.tokenizer.latex_tokenizer import LatexTokenizer
 from src.models.hmer_model import UnifiedHMERModel
 from src.eval.latex_repair import repair_latex_syntax
+from src.segmentation.matrix_parser import MatrixGridParser
 
 
 @dataclass
@@ -33,13 +35,20 @@ class HybridRegionDispatcher:
     """
     Dispatcher routing segmented regions to text HTR vs math HMER.
     """
-    def __init__(self, hmer_model: Optional[UnifiedHMERModel] = None):
+    def __init__(self, hmer_model: Optional[UnifiedHMERModel] = None, checkpoint_path: Optional[str] = None):
         self.text_htr = HandwrittenTextOCR()
         
         if hmer_model is None:
             sample_corpus = [r"\frac{a}{b} + c", r"\sum_{i=1}^{n} i", r"\sqrt{x^{2} + y^{2}}"]
             tokenizer = LatexTokenizer.build_from_corpus(sample_corpus)
             self.hmer_model = UnifiedHMERModel(tokenizer=tokenizer)
+            if checkpoint_path and os.path.exists(checkpoint_path):
+                import torch
+                ckpt = torch.load(checkpoint_path, map_location="cpu")
+                if "model_state_dict" in ckpt:
+                    self.hmer_model.load_state_dict(ckpt["model_state_dict"], strict=False)
+                else:
+                    self.hmer_model.load_state_dict(ckpt, strict=False)
         else:
             self.hmer_model = hmer_model
 
@@ -67,8 +76,19 @@ class HybridRegionDispatcher:
                 transcription=text_output,
                 is_math=False
             )
+        # Route 2D Matrix Regions
+        elif region.region_type == "matrix":
+            matrix_parser = MatrixGridParser()
+            matrix_latex = matrix_parser.parse_matrix_to_latex(region.image_crop)
+            return ProcessedRegion(
+                crop_id=region.crop_id,
+                bbox=region.bbox,
+                region_type="matrix",
+                transcription=matrix_latex,
+                is_math=True
+            )
 
-        # Route Math & Matrix Blocks to Part 1 HMER Engine
+        # Route Math Expressions to Part 1 HMER Engine
         else:
             try:
                 # Resize to (256, 128) for UnifiedHMERModel target input size
@@ -81,9 +101,9 @@ class HybridRegionDispatcher:
                 img_tensor = torch.from_numpy(img_float).unsqueeze(0).unsqueeze(0)
                 
                 raw_latex = self.hmer_model.beam_search_decode(img_tensor)
-                repaired_latex = repair_latex_syntax(raw_latex) if raw_latex else r"\frac{a}{b} + \sqrt{x^{2} + y^{2}}"
-            except Exception:
-                repaired_latex = r"\begin{bmatrix} 1 & 0 \\ 0 & 1 \end{bmatrix}"
+                repaired_latex = repair_latex_syntax(raw_latex) if raw_latex else ""
+            except Exception as err:
+                repaired_latex = ""
 
             return ProcessedRegion(
                 crop_id=region.crop_id,

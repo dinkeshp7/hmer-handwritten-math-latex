@@ -24,7 +24,7 @@ class SpatialReadingOrderGraph:
             return []
 
         # Filter out empty scratch-outs
-        valid_regions = [r for r in regions if r.transcription or r.is_math]
+        valid_regions = [r for r in regions if r.region_type != "scratchout"]
 
         # Calculate Y-midpoint for each region: y_mid = y + h / 2
         def get_y_mid(r: ProcessedRegion) -> float:

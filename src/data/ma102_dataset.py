@@ -67,6 +67,15 @@ class MA102ExamDataset(Dataset):
     def __len__(self) -> int:
         return len(self.samples_metadata)
 
+    def get_full_page_image(self, idx: int) -> Tuple[np.ndarray, Dict[str, Union[str, int]]]:
+        """Returns the unscaled original high-resolution grayscale image (H, W)."""
+        meta = self.samples_metadata[idx]
+        img_path = meta["path"]
+        img_np = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+        if img_np is None:
+            raise IOError(f"Failed to read image at: {img_path}")
+        return img_np, meta
+
     def __getitem__(self, idx: int) -> Tuple[Any, Dict[str, Union[str, int]]]:
         meta = self.samples_metadata[idx]
         img_path = meta["path"]

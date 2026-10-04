@@ -66,8 +66,8 @@ class HandwrittenTextOCR:
             except Exception:
                 pass
 
-        # Rule-based fallback text estimation for offline environments
-        return "Given S is subset of M_4x4(R)"
+        # If TrOCR unavailable or failed, return empty string so no false text is inserted
+        return ""
 
 
 if __name__ == "__main__":
