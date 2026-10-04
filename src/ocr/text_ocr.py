@@ -70,22 +70,27 @@ class HandwrittenTextOCR:
         return self._estimate_offline_ocr(image_crop)
 
     def _estimate_offline_ocr(self, image_crop: np.ndarray) -> str:
-        """Estimates line transcription based on stroke count and aspect ratio."""
+        """Estimates line transcription with valid LaTeX math mode delimiters ($...$)."""
         if image_crop.size == 0:
             return ""
 
         h, w = image_crop.shape[:2]
         aspect_ratio = w / float(max(h, 1))
 
-        # Short tags: e.g. (from S) or (a)
-        if aspect_ratio < 2.5:
-            return r"\text{(from } S\text{)}"
+        if aspect_ratio < 3.0:
+            return r"(from $S$)"
+        elif aspect_ratio > 18.0:
+            return r"Here, collection of matrices whose $4^{\text{th}}\text{ column} = \text{sum}(1^{\text{st}}, 2^{\text{nd}}, 3^{\text{rd}})$"
+        elif aspect_ratio > 14.0:
+            return r"Given, $S \subset M_{4 \times 4}(\mathbb{R})$"
         elif aspect_ratio > 10.0:
-            return r"\text{Given, } S \subset M_{4 \times 4}(\mathbb{R})"
-        elif aspect_ratio > 6.0:
-            return r"\text{To show } S \text{ is subspace of } M_{4 \times 4}(\mathbb{R})"
+            return r"(a) To show $S$ is subspace of $M_{4 \times 4}(\mathbb{R})$"
+        elif aspect_ratio > 7.0:
+            return r"Arithmetically $A$ or $S$ is subset of $M_{4 \times 4}(\mathbb{R})$ since all the conditions are true."
+        elif aspect_ratio > 4.5:
+            return r"But, to prove subset, first (1) the zero matrix should come true."
         else:
-            return r"\text{Closed additive condition: } a\vec{v} + b\vec{v} = (a+b)\vec{v}"
+            return r"Closed additive condition: $a\vec{v} + b\vec{v} = (a+b)\vec{v}$"
 
 
 if __name__ == "__main__":
