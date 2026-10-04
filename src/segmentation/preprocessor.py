@@ -63,6 +63,12 @@ class ImagePreprocessor:
         Returns: (Enhanced Grayscale Image, Binarized Mask)
         """
         if image.ndim == 3:
+            if image.shape[0] == 1:
+                image = image.squeeze(0)
+            elif image.shape[2] == 1:
+                image = image.squeeze(2)
+
+        if image.ndim == 3:
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         else:
             gray = image.copy()

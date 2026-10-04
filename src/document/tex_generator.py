@@ -8,7 +8,7 @@ class LaTeXDocumentGenerator:
 
     def generate_tex_document(self, ordered_regions: List[ProcessedRegion], roll_number: Optional[str] = None) -> str:
         author_str = f'Roll Number: {roll_number}' if roll_number else self.author
-        tex = ['\\documentclass[12pt]{article}', '\\usepackage[utf8]{utf8}', '\\usepackage{amsmath, amssymb, amsfonts}', '\\usepackage{geometry}', '\\geometry{a4paper, margin=1in}', f'\\title{{{self.title}}}', f'\\author{{{author_str}}}', '\\date{\\today}', '\\begin{document}', '\\maketitle', '\\section*{Solution}', '']
+        tex = ['\\documentclass[12pt]{article}', '\\usepackage[utf8]{inputenc}', '\\usepackage{amsmath, amssymb, amsfonts}', '\\usepackage{geometry}', '\\geometry{a4paper, margin=1in}', f'\\title{{{self.title}}}', f'\\author{{{author_str}}}', '\\date{\\today}', '\\begin{document}', '\\maketitle', '\\section*{Solution}', '']
         for r in ordered_regions:
             t = r.transcription.strip()
             if not t: continue
