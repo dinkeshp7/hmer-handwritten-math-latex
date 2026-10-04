@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Handwritten Math to LaTeX Converter (IIT Guwahati BTP)</title>
+    <!-- KaTeX CSS & JS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #1a365d;
+            text-align: center;
+            margin-bottom: 5px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #718096;
+            margin-bottom: 25px;
+        }
+        .canvas-area {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+        canvas {
+            border: 2px dashed #cbd5e0;
+            border-radius: 8px;
+            background-color: #ffffff;
+            cursor: crosshair;
+        }
+        .button-group {
+            display: flex;
+            gap: 12px;
+        }
+        button {
+            background-color: #3182ce;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background-color: #2b6cb0;
+        }
+        button.secondary {
+            background-color: #e2e8f0;
+            color: #4a5568;
+        }
+        button.secondary:hover {
+            background-color: #cbd5e0;
+        }
+        .result-box {
+            margin-top: 30px;
+            padding: 20px;
+            background-color: #ebf8ff;
+            border-left: 4px solid #3182ce;
+            border-radius: 6px;
+        }
+        .latex-code {
+            font-family: monospace;
+            background: #edf2f7;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 16px;
+            word-break: break-all;
+        }
+        .rendered-math {
+            font-size: 24px;
+            margin-top: 15px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Handwritten Math to LaTeX Converter</h1>
+        <div class="subtitle">BTech Project | Department of Mathematics, IIT Guwahati | Supercomputer: PARAM Kamrupa</div>
+        
+        <div class="canvas-area">
+            <canvas id="mathCanvas" width="600" height="200"></canvas>
+            <div class="button-group">
+                <button onclick="recognizeMath()">Recognize Expression</button>
+                <button class="secondary" onclick="clearCanvas()">Clear Canvas</button>
+            </div>
+        </div>
+
+        <div class="result-box">
+            <h3>Predicted LaTeX String:</h3>
+            <div class="latex-code" id="latexOutput">\frac{a}{b} + \sqrt{x^{2} + y^{2}}</div>
+            <h3>Rendered Equation:</h3>
+            <div class="rendered-math" id="mathRender"></div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('mathCanvas');
+        const ctx = canvas.getContext('2d');
+        let isDrawing = false;
+
+        // Canvas stroke styling
+        ctx.lineWidth = 4;
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = '#000000';
+
+        canvas.addEventListener('mousedown', (e) => { isDrawing = true; ctx.beginPath(); ctx.moveTo(e.offsetX, e.offsetY); });
+        canvas.addEventListener('mousemove', (e) => { if (isDrawing) { ctx.lineTo(e.offsetX, e.offsetY); ctx.stroke(); } });
+        canvas.addEventListener('mouseup', () => { isDrawing = false; });
+        canvas.addEventListener('mouseleave', () => { isDrawing = false; });
+
+        function clearCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            document.getElementById('latexOutput').innerText = "";
+            document.getElementById('mathRender').innerHTML = "";
+        }
+
+        function renderKaTeX(latex) {
+            const mathRender = document.getElementById('mathRender');
+            try {
+                katex.render(latex, mathRender, { throwOnError: false, displayMode: true });
+            } catch (err) {
+                mathRender.innerText = latex;
+            }
+        }
+
+        function recognizeMath() {
+            const latex = document.getElementById('latexOutput').innerText;
+            renderKaTeX(latex);
+        }
+
+        // Initial render
+        renderKaTeX(document.getElementById('latexOutput').innerText);
+    </script>
+</body>
+</html>

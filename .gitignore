@@ -1,0 +1,11 @@
+# Large dataset archives & model checkpoints
+*.tar.gz
+*.zip
+*.pth
+checkpoints/
+__pycache__/
+*.pyc
+*.log
+.DS_Store
+scratch/
+.user_uploaded/
