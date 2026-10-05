@@ -93,7 +93,7 @@ class CoverageTransformerDecoder(nn.Module):
 
         causal_mask = self.generate_square_subsequent_mask(seq_len, device)
         pad_mask = (tgt_tokens == self.pad_id)
-        combined_mask = (causal_mask.unsqueeze(0) | pad_mask.unsqueeze(1)).repeat_interleave(self.nhead, dim=0)
+        combined_mask = (causal_mask.unsqueeze(0) | pad_mask.unsqueeze(1)).repeat_interleave(self.nhead, dim=0).to(torch.bool)
 
         dec_out = self.transformer_decoder(
             tgt=tgt_embed,

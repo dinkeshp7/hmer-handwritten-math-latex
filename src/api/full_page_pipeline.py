@@ -33,10 +33,10 @@ class FullPageLaTeXPipeline:
     """
     Master Pipeline Coordinator for Full Answer Script Page Conversion.
     """
-    def __init__(self, hmer_model: Optional[UnifiedHMERModel] = None):
+    def __init__(self, hmer_model: Optional[UnifiedHMERModel] = None, checkpoint_path: Optional[str] = None):
         self.preprocessor = ImagePreprocessor()
         self.segmenter = PageLineSegmenter()
-        self.dispatcher = HybridRegionDispatcher(hmer_model=hmer_model)
+        self.dispatcher = HybridRegionDispatcher(hmer_model=hmer_model, checkpoint_path=checkpoint_path)
         self.sequencer = SpatialReadingOrderGraph()
         self.generator = LaTeXDocumentGenerator()
 
