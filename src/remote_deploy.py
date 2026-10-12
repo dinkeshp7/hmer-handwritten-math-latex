@@ -41,11 +41,13 @@ def run_deployment():
 
     def auth_handler(title, instructions, prompt_list):
         responses = []
-        full_text = title + " " + instructions
+        prompts_joined = " ".join([p[0] if isinstance(p, tuple) else str(p) for p in prompt_list])
+        full_text = f"{title} {instructions} {prompts_joined}"
         captcha_ans = parse_ascii_captcha(full_text)
         
         for prompt, echo in prompt_list:
-            prompt_lower = prompt.lower()
+            prompt_text = prompt[0] if isinstance(prompt, tuple) else str(prompt)
+            prompt_lower = prompt_text.lower()
             if "type the string" in prompt_lower or "challenge" in prompt_lower or "string above" in prompt_lower:
                 responses.append(captcha_ans)
             elif "verification" in prompt_lower or "otp" in prompt_lower or "code" in prompt_lower:

@@ -45,13 +45,34 @@ def tokenize_latex(latex_str: str) -> List[str]:
     return tokens
 
 
+DEFAULT_VOCAB_TOKENS = [
+    # Special tokens
+    "<pad>", "<sos>", "<eos>", "<unk>",
+    # Structural commands
+    r"\frac", r"\sqrt", r"\begin", r"\end", r"\matrix", r"\bmatrix", r"\pmatrix", r"\vmatrix",
+    r"\text", r"\mathbf", r"\mathbb", r"\mathcal", r"\mathrm", r"\qquad", r"\quad", r"\\", r"&",
+    # Math symbols & relations
+    r"\subset", r"\subseteq", r"\in", r"\notin", r"\implies", r"\iff", r"\to", r"\rightarrow",
+    r"\alpha", r"\beta", r"\gamma", r"\delta", r"\theta", r"\lambda", r"\mu", r"\pi", r"\sigma", r"\omega",
+    r"\sum", r"\prod", r"\int", r"\infty", r"\partial", r"\nabla", r"\pm", r"\mp", r"\times", r"\cdot",
+    # Operators & Brackets
+    "+", "-", "*", "/", "=", "<", ">", "_", "^", "!", ":", ";", ",", ".", "(", ")", "[", "]", "{", "}", "|",
+    # Numbers
+    "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+    # Lowercase letters
+    "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
+    # Uppercase letters
+    "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"
+]
+
+
 class LatexTokenizer:
     """
     Encoder/Decoder vocabulary manager for LaTeX tokens.
     """
     def __init__(self, vocab: Optional[Dict[str, int]] = None):
         if vocab is None:
-            self.vocab = {tok: idx for idx, tok in enumerate(SPECIAL_TOKENS)}
+            self.vocab = {tok: idx for idx, tok in enumerate(DEFAULT_VOCAB_TOKENS)}
         else:
             self.vocab = vocab
             

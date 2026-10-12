@@ -18,26 +18,42 @@ except ImportError:
 
 class HandwrittenTextOCR:
     """
-    Handwritten English Text Recognition Engine (TrOCR / Fallback OCR).
+    Handwritten English Text Recognition Engine (TrOCR / Offline Local Model / Fallback OCR).
     """
-    def __init__(self, model_name: str = "microsoft/trocr-base-handwritten", device: Optional[str] = None):
+    def __init__(self, model_name: str = "microsoft/trocr-base-handwritten", local_model_dir: Optional[str] = "/scratch/p.dinkesh/hmer_project/models/trocr", device: Optional[str] = None):
         self.model_name = model_name
+        self.local_model_dir = local_model_dir
         self.device = device or ("cuda" if HAS_TORCH and torch.cuda.is_available() else "cpu")
         self.processor = None
         self.model = None
 
     def load_model(self) -> None:
-        """Lazy loads TrOCR model weights if HuggingFace transformers is installed."""
+        """Lazy loads TrOCR model weights from local offline directory or HuggingFace."""
         if self.model is not None:
             return
 
         try:
             from transformers import TrOCRProcessor, VisionEncoderDecoderModel
-            self.processor = TrOCRProcessor.from_pretrained(self.model_name)
-            self.model = VisionEncoderDecoderModel.from_pretrained(self.model_name).to(self.device)
+            import os
+            
+            # Check for local offline model directory first (e.g. on HPC)
+            if self.local_model_dir and os.path.exists(self.local_model_dir):
+                print(f"[TrOCR] Loading offline weights from local directory: {self.local_model_dir}")
+                self.processor = TrOCRProcessor.from_pretrained(self.local_model_dir)
+                self.model = VisionEncoderDecoderModel.from_pretrained(self.local_model_dir).to(self.device)
+            elif os.path.exists("./models/trocr"):
+                print("[TrOCR] Loading offline weights from local ./models/trocr")
+                self.processor = TrOCRProcessor.from_pretrained("./models/trocr")
+                self.model = VisionEncoderDecoderModel.from_pretrained("./models/trocr").to(self.device)
+            else:
+                print(f"[TrOCR] Attempting HuggingFace online download for model: {self.model_name}")
+                self.processor = TrOCRProcessor.from_pretrained(self.model_name)
+                self.model = VisionEncoderDecoderModel.from_pretrained(self.model_name).to(self.device)
+                
             self.model.eval()
-        except Exception:
-            # Fallback mode for environments without internet / heavy weights
+        except Exception as err:
+            # Fallback mode for HPC environments without direct internet access
+            print(f"[TrOCR Warning] Model loading skipped or internet access restricted ({err}). Using fallback mode.")
             self.model = None
             self.processor = None
 
@@ -60,37 +76,18 @@ class HandwrittenTextOCR:
             try:
                 pixel_values = self.processor(images=image_rgb, return_tensors="pt").pixel_values.to(self.device)
                 with torch.no_grad():
-                    generated_ids = self.model.generate(pixel_values, max_new_tokens=64)
-                generated_text = self.processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
-                return generated_text.strip()
+                    outputs = self.model.generate(
+                        pixel_values,
+                        max_new_tokens=48,
+                        no_repeat_ngram_size=3,
+                        early_stopping=True
+                    )
+                generated_text = self.processor.batch_decode(outputs, skip_special_tokens=True)[0].strip()
+                return generated_text
             except Exception:
                 pass
 
-        # Offline OCR line pattern transcriber for MA102 handwritten exam pages
-        return self._estimate_offline_ocr(image_crop)
-
-    def _estimate_offline_ocr(self, image_crop: np.ndarray) -> str:
-        """Estimates line transcription with valid LaTeX math mode delimiters ($...$)."""
-        if image_crop.size == 0:
-            return ""
-
-        h, w = image_crop.shape[:2]
-        aspect_ratio = w / float(max(h, 1))
-
-        if aspect_ratio < 3.0:
-            return r"(from $S$)"
-        elif aspect_ratio > 18.0:
-            return r"Here, collection of matrices whose $4^{\text{th}}\text{ column} = \text{sum}(1^{\text{st}}, 2^{\text{nd}}, 3^{\text{rd}})$"
-        elif aspect_ratio > 14.0:
-            return r"Given, $S \subset M_{4 \times 4}(\mathbb{R})$"
-        elif aspect_ratio > 10.0:
-            return r"(a) To show $S$ is subspace of $M_{4 \times 4}(\mathbb{R})$"
-        elif aspect_ratio > 7.0:
-            return r"Arithmetically $A$ or $S$ is subset of $M_{4 \times 4}(\mathbb{R})$ since all the conditions are true."
-        elif aspect_ratio > 4.5:
-            return r"But, to prove subset, first (1) the zero matrix should come true."
-        else:
-            return r"Closed additive condition: $a\vec{v} + b\vec{v} = (a+b)\vec{v}$"
+        return ""
 
 
 if __name__ == "__main__":
@@ -101,5 +98,5 @@ if __name__ == "__main__":
     
     text = htr.recognize_text_crop(dummy_crop)
     print(f"Recognized Text Output: \"{text}\"")
-    assert len(text) > 0, "HTR output string must not be empty!"
-    print("[OK] Handwritten Text OCR Engine self-test passed cleanly!")
+    print("[OK] Handwritten Text OCR Engine initialized and ready!")
+

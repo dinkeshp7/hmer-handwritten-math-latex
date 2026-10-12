@@ -14,6 +14,7 @@ import cv2
 
 from src.segmentation.line_segmenter import RegionCrop
 from src.ocr.text_ocr import HandwrittenTextOCR
+from src.ocr.math_ocr import SOTAMathOCR
 from src.tokenizer.latex_tokenizer import LatexTokenizer
 from src.models.hmer_model import UnifiedHMERModel
 from src.eval.latex_repair import repair_latex_syntax
@@ -37,18 +38,18 @@ class HybridRegionDispatcher:
     """
     def __init__(self, hmer_model: Optional[UnifiedHMERModel] = None, checkpoint_path: Optional[str] = None):
         self.text_htr = HandwrittenTextOCR()
+        self.math_ocr = SOTAMathOCR()
         
         if hmer_model is None:
-            sample_corpus = [r"\frac{a}{b} + c", r"\sum_{i=1}^{n} i", r"\sqrt{x^{2} + y^{2}}"]
-            tokenizer = LatexTokenizer.build_from_corpus(sample_corpus)
+            tokenizer = LatexTokenizer()
             self.hmer_model = UnifiedHMERModel(tokenizer=tokenizer)
             if checkpoint_path and os.path.exists(checkpoint_path):
                 import torch
                 ckpt = torch.load(checkpoint_path, map_location="cpu")
-                if "model_state_dict" in ckpt:
-                    self.hmer_model.load_state_dict(ckpt["model_state_dict"], strict=False)
-                else:
-                    self.hmer_model.load_state_dict(ckpt, strict=False)
+                state_dict = ckpt["model_state_dict"] if "model_state_dict" in ckpt else ckpt
+                model_dict = self.hmer_model.state_dict()
+                filtered_dict = {k: v for k, v in state_dict.items() if k in model_dict and model_dict[k].shape == v.shape}
+                self.hmer_model.load_state_dict(filtered_dict, strict=False)
         else:
             self.hmer_model = hmer_model
 
@@ -66,20 +67,57 @@ class HybridRegionDispatcher:
                 is_math=False
             )
 
-        # Route English Text Lines
+        # Route English Text Lines (TrOCR with intelligent Math disambiguation)
         if region.region_type == "text_line":
             text_output = self.text_htr.recognize_text_crop(region.image_crop)
+            
+            # Check if this line is predominantly a math equation (formula with few English words)
+            has_math_cues = any(sym in text_output for sym in ['=', '+', '-', '<', '>', '/', '^', '_', '=>', '->'])
+            english_words = [w for w in text_output.split() if w.isalpha() and len(w) > 2]
+            
+            if has_math_cues and len(english_words) <= 1:
+                math_cand = self.math_ocr.recognize_math_crop(region.image_crop)
+                # Guard against pix2tex hallucinations on wide crops
+                if math_cand and "\\begin{array}" not in math_cand and "\\sqrt{\\sqrt{" not in math_cand and len(math_cand) < 80:
+                    text_output = math_cand
+
+            is_math_expr = any(sym in text_output for sym in ['$', '\\', '=', '+', '-', '^', '_', '{', '}'])
             return ProcessedRegion(
                 crop_id=region.crop_id,
                 bbox=region.bbox,
                 region_type="text_line",
                 transcription=text_output,
-                is_math=False
+                is_math=is_math_expr
             )
-        # Route 2D Matrix Regions
+        # Route 2D Matrix Regions to MatrixGridParser + SOTAMathOCR / TrOCR
         elif region.region_type == "matrix":
             matrix_parser = MatrixGridParser()
-            matrix_latex = matrix_parser.parse_matrix_to_latex(region.image_crop)
+            def row_cell_recognizer(row_crop: np.ndarray) -> str:
+                # 1. Try SOTAMathOCR with anti-hallucination guard
+                res = self.math_ocr.recognize_math_crop(row_crop)
+                if res and "\\begin{array}" not in res and "\\sqrt{\\sqrt{" not in res and len(res) < 80:
+                    return res
+                # 2. Try TrOCR for reading row symbols/numbers
+                t_row = self.text_htr.recognize_text_crop(row_crop)
+                if t_row and len(t_row) > 1:
+                    clean = t_row.replace('"', '').replace("'", "").strip()
+                    tokens = [tok for tok in clean.split() if tok not in [",", ";", "|", "(", ")"]]
+                    if len(tokens) >= 2:
+                        return " & ".join(tokens)
+                    return clean
+                # 3. Fallback to UnifiedHMERModel
+                h, w = 128, 256
+                img_resized = cv2.resize(row_crop, (w, h), interpolation=cv2.INTER_LINEAR)
+                img_float = (img_resized.astype(np.float32) / 127.5) - 1.0
+                import torch
+                img_tensor = torch.from_numpy(img_float).unsqueeze(0).unsqueeze(0)
+                try:
+                    res = self.hmer_model.beam_search_decode(img_tensor)
+                    return res if res else ""
+                except Exception:
+                    return ""
+
+            matrix_latex = matrix_parser.parse_matrix_to_latex(region.image_crop, cell_recognizer=row_cell_recognizer)
             return ProcessedRegion(
                 crop_id=region.crop_id,
                 bbox=region.bbox,
@@ -88,23 +126,28 @@ class HybridRegionDispatcher:
                 is_math=True
             )
 
-        # Route Math Expressions to Part 1 HMER Engine
+        # Route Math Expressions to SOTAMathOCR + Part 1 HMER Engine
         else:
-            try:
-                # Resize to (256, 128) for UnifiedHMERModel target input size
-                h, w = 128, 256
-                img_resized = cv2.resize(region.image_crop, (w, h), interpolation=cv2.INTER_LINEAR)
-                img_float = (img_resized.astype(np.float32) / 127.5) - 1.0
-                
-                # Convert to tensor
-                import torch
-                img_tensor = torch.from_numpy(img_float).unsqueeze(0).unsqueeze(0)
-                
-                raw_latex = self.hmer_model.beam_search_decode(img_tensor)
-                repaired_latex = repair_latex_syntax(raw_latex) if raw_latex else ""
-            except Exception as err:
-                repaired_latex = ""
+            # 1. Try SOTA Pretrained Math ViT
+            raw_latex = self.math_ocr.recognize_math_crop(region.image_crop)
+            # Guard against pix2tex hallucinations
+            if raw_latex and ("\\begin{array}" in raw_latex or "\\sqrt{\\sqrt{" in raw_latex or len(raw_latex) > 100):
+                t_cand = self.text_htr.recognize_text_crop(region.image_crop)
+                raw_latex = t_cand if t_cand else ""
+            
+            # 2. Fallback to UnifiedHMERModel
+            if not raw_latex:
+                try:
+                    h, w = 128, 256
+                    img_resized = cv2.resize(region.image_crop, (w, h), interpolation=cv2.INTER_LINEAR)
+                    img_float = (img_resized.astype(np.float32) / 127.5) - 1.0
+                    import torch
+                    img_tensor = torch.from_numpy(img_float).unsqueeze(0).unsqueeze(0)
+                    raw_latex = self.hmer_model.beam_search_decode(img_tensor)
+                except Exception:
+                    raw_latex = ""
 
+            repaired_latex = repair_latex_syntax(raw_latex) if raw_latex else ""
             return ProcessedRegion(
                 crop_id=region.crop_id,
                 bbox=region.bbox,

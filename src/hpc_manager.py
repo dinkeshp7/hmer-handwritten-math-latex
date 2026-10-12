@@ -20,7 +20,7 @@ PASSWORD = "UHrOE39I6VfA"
 
 
 def parse_ascii_captcha(prompt_text: str) -> str:
-    """
+    r"""
     Parses ASCII captcha pattern from PARAM Kamrupa login prompt.
     Example prompt format:
       _   _   _   _   _   _   _   _
@@ -53,16 +53,22 @@ class ParamKamrupaManager:
 
         def auth_handler(title, instructions, prompt_list):
             responses = []
-            full_text = f"{title} {instructions}"
+            prompts_joined = " ".join([p[0] if isinstance(p, tuple) else str(p) for p in prompt_list])
+            full_text = f"{title} {instructions} {prompts_joined}"
             captcha_ans = parse_ascii_captcha(full_text)
 
             for prompt, echo in prompt_list:
-                prompt_lower = prompt.lower()
+                prompt_text = prompt[0] if isinstance(prompt, tuple) else str(prompt)
+                prompt_lower = prompt_text.lower()
+                print(f"[SSH Auth Prompt] {prompt_text.strip()}")
                 if any(k in prompt_lower for k in ["type the string", "challenge", "string above", "captcha"]):
+                    print(f"   --> Sending Solved Captcha: '{captcha_ans}'")
                     responses.append(captcha_ans)
                 elif any(k in prompt_lower for k in ["verification", "otp", "code"]):
+                    print(f"   --> Sending OTP Code: '{self.otp_code}'")
                     responses.append(self.otp_code)
                 elif "password" in prompt_lower:
+                    print("   --> Sending Password")
                     responses.append(self.password)
                 else:
                     responses.append(self.password)
@@ -98,6 +104,58 @@ class ParamKamrupaManager:
                 print(f"[STDERR]\n{err}")
         return out, err, exit_code
 
+    def upload_file(self, local_path: str, remote_path: str) -> bool:
+        if not self.client:
+            raise RuntimeError("SSH Client is not connected.")
+        try:
+            print(f"Uploading {local_path} -> {remote_path} via SFTP...")
+            sftp = self.client.open_sftp()
+            sftp.put(local_path, remote_path)
+            sftp.close()
+            print("✅ File uploaded successfully via SFTP!")
+            return True
+        except Exception as e:
+            print(f"❌ SFTP Upload Failed: {e}")
+            return False
+
+    def upload_directory(self, local_dir: str, remote_dir: str) -> bool:
+        if not self.client:
+            raise RuntimeError("SSH Client is not connected.")
+        try:
+            sftp = self.client.open_sftp()
+            local_path = Path(local_dir).resolve()
+            print(f"Uploading directory recursively: {local_path} -> {remote_dir}...")
+            
+            # Ensure base remote directory exists
+            try:
+                sftp.mkdir(remote_dir)
+            except IOError:
+                pass
+                
+            for root, dirs, files in os.walk(local_path):
+                rel_path = Path(root).relative_to(local_path)
+                if str(rel_path) != ".":
+                    target_remote_dir = f"{remote_dir}/{rel_path}".replace("\\", "/")
+                    try:
+                        sftp.mkdir(target_remote_dir)
+                    except IOError:
+                        pass
+                else:
+                    target_remote_dir = remote_dir
+                
+                for file_name in files:
+                    local_file_path = os.path.join(root, file_name)
+                    remote_file_path = f"{target_remote_dir}/{file_name}".replace("\\", "/")
+                    print(f"  --> Uploading {file_name} ({os.path.getsize(local_file_path) / (1024*1024):.1f} MB)...")
+                    sftp.put(local_file_path, remote_file_path)
+            
+            sftp.close()
+            print("✅ Directory uploaded successfully via SFTP!")
+            return True
+        except Exception as e:
+            print(f"❌ SFTP Directory Upload Failed: {e}")
+            return False
+
     def close(self):
         if self.client:
             self.client.close()
@@ -108,7 +166,8 @@ def main():
     parser = argparse.ArgumentParser(description="PARAM Kamrupa Master Control Engine")
     parser.add_argument("--otp", type=str, required=True, help="6-digit 2FA OTP code from Authenticator App")
     parser.add_argument("--command", type=str, default="", help="Custom bash command to execute remotely")
-    parser.add_argument("--action", type=str, choices=["status", "logs", "fix-pillow", "cmd"], default="status", help="Preset action to perform")
+    parser.add_argument("--action", type=str, choices=["status", "logs", "fix-pillow", "upload", "cmd"], default="status", help="Preset action to perform")
+    parser.add_argument("--file", type=str, default="hmer_codebase.tar.gz", help="Local file or directory to upload")
     args = parser.parse_args()
 
     mgr = ParamKamrupaManager(otp_code=args.otp)
@@ -116,7 +175,23 @@ def main():
         sys.exit(1)
 
     try:
-        if args.action == "status":
+        if args.action == "upload":
+            local_target = Path(args.file).resolve()
+            if not local_target.exists():
+                print(f"Error: Local path '{local_target}' not found.")
+                return
+            if local_target.is_dir():
+                remote_dir = f"/scratch/p.dinkesh/hmer_project/models/{local_target.name}"
+                mgr.upload_directory(str(local_target), remote_dir)
+            else:
+                remote_file = f"/scratch/p.dinkesh/hmer_project/{local_target.name}"
+                if mgr.upload_file(str(local_target), remote_file):
+                    if local_target.name.endswith(".tar.gz"):
+                        print("\n=== Extracting Codebase Tarball on PARAM Kamrupa ===")
+                        mgr.run_cmd("cd /scratch/p.dinkesh/hmer_project && tar -xzf hmer_codebase.tar.gz")
+                        print("\n=== Directory Contents After Unpacking ===")
+                        mgr.run_cmd("ls -la /scratch/p.dinkesh/hmer_project/")
+        elif args.action == "status":
             print("\n=== Checking Slurm Queue ===")
             mgr.run_cmd("squeue -u p.dinkesh")
             print("\n=== Directory Contents on /scratch ===")

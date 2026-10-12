@@ -21,37 +21,51 @@ class MatrixGridParser:
     def segment_matrix_rows(self, matrix_crop: np.ndarray) -> List[np.ndarray]:
         """
         Segments a 2D matrix crop image into horizontal row crop images using horizontal projection.
+        Excludes outer vertical bracket columns (left and right margins) to clearly expose inter-row valleys.
         """
         if matrix_crop.size == 0:
             return []
 
         h, w = matrix_crop.shape[:2]
-        
-        # Binarize if grayscale
         if matrix_crop.ndim == 3:
             gray = cv2.cvtColor(matrix_crop, cv2.COLOR_BGR2GRAY)
         else:
             gray = matrix_crop.copy()
 
-        # Adaptive thresholding (inverted)
+        # Isolate interior matrix cells (excluding tall outer brackets)
+        left_margin = int(w * 0.18)
+        right_margin = int(w * 0.85)
+        inner = gray[:, left_margin:right_margin] if (right_margin > left_margin) else gray
+
         binarized = cv2.adaptiveThreshold(
-            gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            inner, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
             cv2.THRESH_BINARY_INV, 15, 8
         )
 
-        # Horizontal projection profile (sum of stroke pixels along width)
         proj = np.sum(binarized > 0, axis=1)
-        
-        # Smooth projection profile with Gaussian kernel
         kernel_size = max(int(h * 0.05), 3)
         if kernel_size % 2 == 0:
             kernel_size += 1
         smoothed = cv2.GaussianBlur(proj.astype(np.float32), (1, kernel_size), 0).flatten()
 
-        threshold = np.mean(smoothed) * 0.2
+        # Find row valleys (local minima in interior projection)
+        from scipy.signal import find_peaks
+        peaks, _ = find_peaks(smoothed, distance=int(h * 0.15), prominence=max(np.mean(smoothed) * 0.2, 5))
+        if len(peaks) >= self.min_rows:
+            # Valleys between peaks
+            valleys = [0]
+            for i in range(len(peaks) - 1):
+                p1, p2 = peaks[i], peaks[i+1]
+                valley_idx = p1 + int(np.argmin(smoothed[p1:p2]))
+                valleys.append(valley_idx)
+            valleys.append(h)
+
+            row_crops = [gray[valleys[i]:valleys[i+1], :] for i in range(len(valleys)-1)]
+            return row_crops
+
+        threshold = np.mean(smoothed) * 0.25
         row_mask = smoothed > threshold
 
-        # Find continuous row segments
         row_intervals: List[Tuple[int, int]] = []
         in_row = False
         start_y = 0
@@ -62,28 +76,37 @@ class MatrixGridParser:
                 start_y = y
             elif not row_mask[y] and in_row:
                 in_row = False
-                if (y - start_y) >= 12:  # Minimum row height threshold
+                if (y - start_y) >= 12:
                     row_intervals.append((start_y, y))
 
         if in_row and (h - start_y) >= 12:
             row_intervals.append((start_y, h))
 
-        # Extract row crops
         row_crops = [gray[y1:y2, :] for y1, y2 in row_intervals]
         return row_crops if len(row_crops) >= self.min_rows else [gray]
 
     def parse_matrix_to_latex(self, matrix_crop: np.ndarray, cell_recognizer=None) -> str:
         """
-        Parses 4x4 handwritten matrix crop A into accurate LaTeX bmatrix code string.
+        Parses handwritten matrix crop into LaTeX bmatrix code by segmenting row crops.
         """
-        matrix_rows = [
-            "-1 & 1.5 & 2.5 & 3",
-            "3.5 & -2 & 0.5 & 2",
-            "4.5 & 2.5 & -3 & 4",
-            "-0.5 & -1.5 & 3 & 1"
-        ]
-        body = " \\\\\n".join(matrix_rows)
-        return f"A = \\begin{{bmatrix}}\n{body}\n\\end{{bmatrix}} \\quad \\text{{(from }} S\\text{{)}}"
+        rows = self.segment_matrix_rows(matrix_crop)
+        if not rows:
+            return r"\begin{bmatrix} 0 \end{bmatrix}"
+
+        latex_rows = []
+        for idx, row in enumerate(rows):
+            if cell_recognizer is not None:
+                row_str = cell_recognizer(row)
+            else:
+                row_str = f"r_{{{idx+1}1}} & r_{{{idx+1}2}} & r_{{{idx+1}3}} & r_{{{idx+1}4}}"
+            if row_str:
+                latex_rows.append(row_str)
+
+        if not latex_rows:
+            return r"\begin{bmatrix} 0 \end{bmatrix}"
+
+        body = " \\\\\n".join(latex_rows)
+        return f"\\begin{{bmatrix}}\n{body}\n\\end{{bmatrix}}"
 
 
 if __name__ == "__main__":

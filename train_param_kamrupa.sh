@@ -37,8 +37,12 @@ module purge
 module load cuda/11.7
 module load Anaconda/Anaconda3-2023.03
 
-# Enable Conda Profile
+# Enable Conda Profile & Virtual Environment
 source $ANACONDA_HOME/etc/profile.d/conda.sh 2>/dev/null || true
+if [ -f "$SCRATCH_DIR/venv/bin/activate" ]; then
+    echo "Activating virtual environment from $SCRATCH_DIR/venv..."
+    source "$SCRATCH_DIR/venv/bin/activate"
+fi
 
 export OMP_NUM_THREADS=8
 

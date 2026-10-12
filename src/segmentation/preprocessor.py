@@ -33,10 +33,12 @@ class ImagePreprocessor:
 
         angles = []
         for line in lines:
-            x1, y1, x2, y2 = line[0]
-            angle = math.degrees(math.atan2(y2 - y1, x2 - x1))
-            if -45 < angle < 45:
-                angles.append(angle)
+            line_flat = line.flatten()
+            if len(line_flat) >= 4:
+                x1, y1, x2, y2 = line_flat[:4]
+                angle = math.degrees(math.atan2(y2 - y1, x2 - x1))
+                if -45 < angle < 45:
+                    angles.append(angle)
 
         return float(np.median(angles)) if len(angles) > 0 else 0.0
 
