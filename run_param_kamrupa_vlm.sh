@@ -36,13 +36,18 @@ IMAGE_PATH="${1:-page-210103096-01.jpg}"
 ENGINE="${2:-qwen_vl}"
 MODEL_NAME="${3:-}"
 
+# Generate image-specific and engine-specific output filename
+IMAGE_BASENAME=$(basename "$IMAGE_PATH" | sed 's/\.[^.]*$//')
+OUTPUT_TEX="output_${ENGINE}_${IMAGE_BASENAME}.tex"
+
 echo "Target Image   : $IMAGE_PATH"
 echo "Target Engine  : $ENGINE"
+echo "Output Target  : $OUTPUT_TEX"
 if [ -n "$MODEL_NAME" ]; then
     echo "Target Model   : $MODEL_NAME"
 fi
 
-CMD="python run_full_page_inference.py --image_path $IMAGE_PATH --engine $ENGINE --output_tex output_${ENGINE}_solution.tex"
+CMD="python run_full_page_inference.py --image_path $IMAGE_PATH --engine $ENGINE --output_tex $OUTPUT_TEX"
 if [ -n "$MODEL_NAME" ]; then
     CMD="$CMD --model_name $MODEL_NAME"
 fi
@@ -50,6 +55,10 @@ fi
 echo "Executing: $CMD"
 eval "$CMD"
 
+# Also maintain convenience copy
+cp -f "$OUTPUT_TEX" "output_${ENGINE}_solution.tex" 2>/dev/null || true
+
 echo "======================================================================"
-echo "Inference Complete. Output LaTeX saved to: output_${ENGINE}_solution.tex"
+echo "Inference Complete. Output LaTeX saved to: $OUTPUT_TEX"
+echo "Convenience copy updated at: output_${ENGINE}_solution.tex"
 echo "======================================================================"
