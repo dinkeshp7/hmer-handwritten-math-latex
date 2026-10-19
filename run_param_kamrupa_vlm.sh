@@ -28,6 +28,7 @@ module load cuda/11.7
 module load Anaconda/Anaconda3-2023.03
 source $ANACONDA_HOME/etc/profile.d/conda.sh 2>/dev/null || true
 source "$SCRATCH_DIR/venv/bin/activate"
+export LD_LIBRARY_PATH=/opt/ohpc/pub/apps/Anaconda3-2023.03/lib:$LD_LIBRARY_PATH
 
 echo "CUDA Available Device Check:"
 python -c "import torch; print('CUDA Available:', torch.cuda.is_available(), '| GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'None')"

@@ -12,8 +12,24 @@ Executes end-to-end full page conversion:
 
 import os
 import sys
+import ctypes
 import argparse
 from pathlib import Path
+
+# Fix for CentOS 7 / RedHat HPC nodes: Preload Anaconda's modern libstdc++ to resolve CXXABI_1.3.9
+for candidate in [
+    "/opt/ohpc/pub/apps/Anaconda3-2023.03/lib/libstdc++.so.6",
+    "/opt/ohpc/pub/apps/Anaconda3-2023.03/lib/libstdc++.so",
+    os.path.expanduser("~/miniconda3/lib/libstdc++.so.6"),
+    os.path.expanduser("~/anaconda3/lib/libstdc++.so.6"),
+]:
+    if os.path.exists(candidate):
+        try:
+            ctypes.CDLL(candidate, mode=ctypes.RTLD_GLOBAL)
+            break
+        except Exception:
+            pass
+
 import cv2
 import numpy as np
 
