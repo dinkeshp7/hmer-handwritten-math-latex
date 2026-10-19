@@ -59,9 +59,7 @@ class LaTeXDocumentGenerator:
             if r.region_type == 'matrix':
                 flush_align_buffer()
                 tex.extend(['\\[', t if '\\begin' in t else f'\\begin{{bmatrix}} {t} \\end{{bmatrix}}', '\\]', ''])
-            elif r.region_type != 'text_line' and (r.is_math or t.startswith('\\implies') or t.startswith('(')):
-                align_buffer.append(t)
-            elif t.startswith('\\implies'):
+            elif r.is_math or t.startswith('\\implies'):
                 align_buffer.append(t)
             else:
                 flush_align_buffer()

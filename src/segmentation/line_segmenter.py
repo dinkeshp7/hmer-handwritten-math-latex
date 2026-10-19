@@ -86,8 +86,8 @@ class PageLineSegmenter:
                 # Case A: Same horizontal text line (h < 110, mh < 110, vertical centers close)
                 same_line = (h1 < 110 and mh < 110 and abs(yc1 - yc_m) < 35)
 
-                # Case B: Part of the same tall 2D block / matrix (vertical overlap > 60% of min_h)
-                same_block = (min_h > 0 and (v_overlap / float(min_h)) > 0.65 and max(h1, mh) > 130 and abs(yc1 - yc_m) < 120)
+                # Case B: Part of the same tall 2D block / matrix (vertical overlap > 60% of min_h, capped at height 280)
+                same_block = (min_h > 0 and (v_overlap / float(min_h)) > 0.65 and max(h1, mh) > 130 and abs(yc1 - yc_m) < 100 and max(y1 + h1, my + mh) - min(y1, my) < 280)
 
                 if same_line or same_block:
                     new_x = min(x1, mx)
@@ -107,6 +107,7 @@ class PageLineSegmenter:
     def segment_page(self, image_gray: np.ndarray, binarized_mask: np.ndarray) -> List[RegionCrop]:
         """
         Segments a full page grayscale image into an ordered list of RegionCrop objects.
+        Processes the complete page from top to bottom.
         """
         h_page, w_page = image_gray.shape[:2]
 
@@ -122,16 +123,13 @@ class PageLineSegmenter:
         for cnt in contours:
             x, y, w, h = cv2.boundingRect(cnt)
             
-            # Filter printed header margin instructions & question prompt box (top 26.5% of page)
-            if y < int(h_page * 0.265):
-                continue
-            # Filter bottom margin artifacts (bottom 5% of page)
-            if y > int(h_page * 0.95):
+            # Keep full page content: only skip extreme scanner edges (< 10px from top/bottom)
+            if y < 10 or y > int(h_page * 0.98):
                 continue
             # Filter thin horizontal printed separator lines
             if w > int(w_page * 0.55) and h < 22:
                 continue
-            if h < self.min_line_height or w < 30:
+            if h < self.min_line_height or w < 25:
                 continue
 
             raw_regions.append((x, y, w, h))

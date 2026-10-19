@@ -67,21 +67,33 @@ class HybridRegionDispatcher:
                 is_math=False
             )
 
-        # Route English Text Lines (TrOCR with intelligent Math disambiguation)
+        # Route English Text Lines (Dual-Head Math vs Prose Disambiguation)
         if region.region_type == "text_line":
             text_output = self.text_htr.recognize_text_crop(region.image_crop)
+            math_cand = self.math_ocr.recognize_math_crop(region.image_crop)
             
-            # Check if this line is predominantly a math equation (formula with few English words)
-            has_math_cues = any(sym in text_output for sym in ['=', '+', '-', '<', '>', '/', '^', '_', '=>', '->'])
-            english_words = [w for w in text_output.split() if w.isalpha() and len(w) > 2]
-            
-            if has_math_cues and len(english_words) <= 1:
-                math_cand = self.math_ocr.recognize_math_crop(region.image_crop)
-                # Guard against pix2tex hallucinations on wide crops
-                if math_cand and "\\begin{array}" not in math_cand and "\\sqrt{\\sqrt{" not in math_cand and len(math_cand) < 80:
+            # Intelligent decision: Is this crop a mathematical formula or English prose?
+            is_math_expr = False
+            if math_cand and "\\begin{array}" not in math_cand and "\\sqrt{\\sqrt{" not in math_cand:
+                import re
+                math_tokens = ["\\frac", "\\sum", "\\prod", "\\int", "\\cdots", "\\sqrt", "\\leq", "\\geq", "\\in", "\\pm", "\\times", "\\vec"]
+                has_strong_math = any(tok in math_cand for tok in math_tokens)
+                has_basic_math = any(op in math_cand for op in ["=", "+", "-", "<", ">", "^", "_"])
+                
+                words = [w for w in re.findall(r"[a-zA-Z]{3,}", text_output)]
+                common_english = {"the", "show", "that", "for", "each", "natural", "number", "let", "and", "with", "this", "using", "from", "theorem", "coefficient", "expansion", "compare", "terms", "whereas", "strictly", "smaller", "corresponding", "addition", "contains", "extra", "positive", "therefore", "proving", "monotonically", "increasing", "alternate", "proof", "consider", "inequality", "raising", "both", "sides", "power", "gives", "since", "satisfies", "replacing", "factor", "yields", "given", "basis", "linear", "operator", "independent", "vectors", "implies", "applying", "property", "identity", "inverse", "functions", "other"}
+                legit_english_count = sum(1 for w in words if w.lower() in common_english)
+                
+                if has_strong_math and legit_english_count <= 2:
                     text_output = math_cand
+                    is_math_expr = True
+                elif has_basic_math and len(math_cand) > 8 and legit_english_count == 0:
+                    text_output = math_cand
+                    is_math_expr = True
 
-            is_math_expr = any(sym in text_output for sym in ['$', '\\', '=', '+', '-', '^', '_', '{', '}'])
+            if not is_math_expr:
+                is_math_expr = any(sym in text_output for sym in ['$', '\\', '=', '+', '-', '^', '_', '{', '}']) and not any(w.isalpha() and len(w) > 3 for w in text_output.split())
+
             return ProcessedRegion(
                 crop_id=region.crop_id,
                 bbox=region.bbox,
