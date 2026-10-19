@@ -31,6 +31,8 @@ def main():
     parser.add_argument("--checkpoint", type=str, default="/scratch/p.dinkesh/hmer_project/checkpoints/hmer_checkpoint_epoch_010.pth", help="Trained HMER checkpoint path")
     parser.add_argument("--roll_number", type=str, default="210103096", help="Student roll number")
     parser.add_argument("--output_tex", type=str, default="output_solution.tex", help="Path to save output LaTeX file")
+    parser.add_argument("--engine", type=str, default="hybrid", choices=["hybrid", "nougat", "qwen_vl"], help="OCR Engine: 'hybrid' (Dual-Head TrOCR+pix2tex), 'nougat' (Meta Nougat), 'qwen_vl' (Qwen2.5-VL SOTA)")
+    parser.add_argument("--model_name", type=str, default=None, help="Specific HuggingFace model repo or path (e.g. Qwen/Qwen2.5-VL-7B-Instruct or facebook/nougat-small)")
     args = parser.parse_args()
 
     print("======================================================================")
@@ -38,6 +40,9 @@ def main():
     print("======================================================================")
     print(f"Filename            : {os.path.basename(args.image_path)}")
     print(f"Student Roll Number : {args.roll_number}")
+    print(f"Engine Selected     : {args.engine}")
+    if args.model_name:
+        print(f"Model Specified     : {args.model_name}")
 
     # Check for image file
     img = None
@@ -75,7 +80,11 @@ def main():
 
     # Initialize master pipeline
     ckpt = args.checkpoint if os.path.exists(args.checkpoint) else None
-    pipeline = FullPageLaTeXPipeline(checkpoint_path=ckpt)
+    pipeline = FullPageLaTeXPipeline(
+        checkpoint_path=ckpt,
+        engine=args.engine,
+        model_name=args.model_name
+    )
 
     # Process page
     result = pipeline.process_full_page(img, roll_number=args.roll_number)
