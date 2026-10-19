@@ -43,13 +43,28 @@ def download_nougat(output_dir: str = "models/nougat", model_name: str = "facebo
     print(f"[SUCCESS] Nougat offline model ready in: {output_dir}\n")
 
 
-def download_qwen_vl(output_dir: str = "models/qwen_vl", model_name: str = "Qwen/Qwen2.5-VL-7B-Instruct"):
+def download_qwen_vl(output_dir: str = "models/qwen_vl", model_name: str = "Qwen/Qwen2-VL-2B-Instruct"):
     print(f"=== Downloading Qwen-VL Model ({model_name}) ===")
-    from transformers import AutoProcessor
-    
     os.makedirs(output_dir, exist_ok=True)
     print(f"Target directory: {output_dir}")
     
+    # Preferred method: snapshot_download directly from HuggingFace Hub
+    # Does NOT require PyTorch or Torchvision to be instantiated in RAM on login node
+    try:
+        from huggingface_hub import snapshot_download
+        print(f"[Qwen-VL] Using direct snapshot download (zero PyTorch RAM overhead)...")
+        snapshot_download(
+            repo_id=model_name,
+            local_dir=output_dir,
+            local_dir_use_symlinks=False,
+            ignore_patterns=["*.msgpack", "*.h5", "*.ot"]
+        )
+        print(f"[SUCCESS] Qwen-VL offline model ready in: {output_dir}\n")
+        return
+    except Exception as err:
+        print(f"[Notice] Direct snapshot failed ({err}), falling back to AutoProcessor/Model...")
+
+    from transformers import AutoProcessor
     processor = AutoProcessor.from_pretrained(model_name)
     processor.save_pretrained(output_dir)
     print("[Qwen-VL] Processor saved.")
@@ -60,11 +75,11 @@ def download_qwen_vl(output_dir: str = "models/qwen_vl", model_name: str = "Qwen
         model_cls = AutoModelForImageTextToText
     except Exception:
         try:
-            from transformers import Qwen2_5_VLForConditionalGeneration
-            model_cls = Qwen2_5_VLForConditionalGeneration
-        except Exception:
             from transformers import Qwen2VLForConditionalGeneration
             model_cls = Qwen2VLForConditionalGeneration
+        except Exception:
+            from transformers import AutoModelForVision2Seq
+            model_cls = AutoModelForVision2Seq
             
     print(f"[Qwen-VL] Using model class: {model_cls.__name__}")
     model = model_cls.from_pretrained(model_name)
@@ -77,7 +92,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Download Nougat and Qwen-VL weights for offline HPC execution")
     parser.add_argument("--model", type=str, choices=["all", "nougat", "qwen_vl"], default="all")
     parser.add_argument("--nougat_model", type=str, default="facebook/nougat-small", help="HuggingFace model ID for Nougat")
-    parser.add_argument("--qwen_model", type=str, default="Qwen/Qwen2.5-VL-7B-Instruct", help="HuggingFace model ID for Qwen VL")
+    parser.add_argument("--qwen_model", type=str, default="Qwen/Qwen2-VL-2B-Instruct", help="HuggingFace model ID for Qwen VL (e.g. Qwen/Qwen2-VL-2B-Instruct or Qwen/Qwen2.5-VL-7B-Instruct)")
     parser.add_argument("--nougat_dir", type=str, default="/scratch/p.dinkesh/hmer_project/models/nougat")
     parser.add_argument("--qwen_dir", type=str, default="/scratch/p.dinkesh/hmer_project/models/qwen_vl")
     args = parser.parse_args()
