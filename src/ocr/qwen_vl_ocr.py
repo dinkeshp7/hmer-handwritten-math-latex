@@ -148,6 +148,9 @@ class QwenVLOCREngine:
         ]
 
         output_text = ""
+        if HAS_TORCH and torch.cuda.is_available():
+            torch.backends.cudnn.enabled = False
+
         try:
             from qwen_vl_utils import process_vision_info
             text_prompt = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
@@ -168,7 +171,7 @@ class QwenVLOCREngine:
                 output_text = self.processor.batch_decode(
                     generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
                 )[0]
-        except Exception:
+        except Exception as exc1:
             # Fallback using standard processor pipeline if qwen_vl_utils is not available
             try:
                 text_prompt = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
@@ -187,7 +190,9 @@ class QwenVLOCREngine:
                         generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
                     )[0]
             except Exception as err:
+                import traceback
                 print(f"[Qwen-VL Error] Transcription failed: {err}")
+                traceback.print_exc()
                 return ""
 
         # Post-processing: extract clean LaTeX code

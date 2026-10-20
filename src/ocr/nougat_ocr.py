@@ -87,19 +87,26 @@ class NougatOCREngine:
             return ""
 
         try:
+            if HAS_TORCH and torch.cuda.is_available():
+                torch.backends.cudnn.enabled = False
+
             pixel_values = self.processor(images=image, return_tensors="pt").pixel_values.to(self.device)
+            gen_kwargs = {
+                "min_length": 1,
+                "max_new_tokens": 1024,
+            }
+            if hasattr(self.processor, "tokenizer") and getattr(self.processor.tokenizer, "unk_token_id", None) is not None:
+                gen_kwargs["bad_words_ids"] = [[self.processor.tokenizer.unk_token_id]]
+
             with torch.no_grad():
-                outputs = self.model.generate(
-                    pixel_values,
-                    min_length=1,
-                    max_new_tokens=1024,
-                    bad_words_ids=[[self.processor.tokenizer.unk_token_id]],
-                )
+                outputs = self.model.generate(pixel_values, **gen_kwargs)
             decoded = self.processor.batch_decode(outputs, skip_special_tokens=True)[0]
             cleaned_latex = self.processor.post_process_generation(decoded, fix_markdown=True)
             return cleaned_latex
         except Exception as err:
+            import traceback
             print(f"[Nougat Error] Inference failed: {err}")
+            traceback.print_exc()
             return ""
 
 
