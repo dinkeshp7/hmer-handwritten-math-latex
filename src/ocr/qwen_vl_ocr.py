@@ -75,6 +75,13 @@ class QwenVLOCREngine:
                     from transformers import Qwen2VLForConditionalGeneration
                     model_cls = Qwen2VLForConditionalGeneration
 
+            if model_cls is None:
+                raise ImportError(
+                    "None of AutoModelForImageTextToText, Qwen2_5_VLForConditionalGeneration, "
+                    "or Qwen2VLForConditionalGeneration could be imported from transformers. "
+                    "Please install transformers==4.46.3."
+                )
+
             kwargs: Dict[str, Any] = {}
             if self.device == "cuda":
                 # Use bfloat16 if supported, else float16
@@ -91,9 +98,12 @@ class QwenVLOCREngine:
             self.model.eval()
             print(f"[Qwen-VL] Initialized successfully using {model_cls.__name__} on device: {self.device}")
         except Exception as err:
-            print(f"[Qwen-VL Warning] Model loading failed ({err}). Falling back.")
+            import traceback
+            print(f"[Qwen-VL Error] Model loading failed ({err}):")
+            traceback.print_exc()
             self.model = None
             self.processor = None
+            raise RuntimeError(f"Failed to load Qwen-VL model: {err}")
 
     def recognize_page(self, image_input: Union[np.ndarray, str, Image.Image], roll_number: Optional[str] = None) -> str:
         """

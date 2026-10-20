@@ -93,6 +93,10 @@ class FullPageLaTeXPipeline:
                     "engine_used": "qwen_vl",
                     "status": "success"
                 }
+            raise RuntimeError(
+                "[Qwen-VL Engine Error] Failed to generate LaTeX transcription. "
+                "Ensure 'transformers==4.46.3' is installed and offline weights exist in models/qwen_vl."
+            )
 
         # Engine: Meta Nougat End-to-End Academic Model
         elif self.engine == "nougat":
@@ -108,6 +112,10 @@ class FullPageLaTeXPipeline:
                     "engine_used": "nougat",
                     "status": "success"
                 }
+            raise RuntimeError(
+                "[Nougat Engine Error] Failed to generate LaTeX transcription. "
+                "Ensure 'transformers==4.46.3' is installed and offline weights exist in models/nougat."
+            )
 
         # Default Engine: Hybrid Line Segmentation + Dual-Head Recognition
         # 1. Preprocessing & Deskewing

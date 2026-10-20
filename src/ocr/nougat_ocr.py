@@ -58,9 +58,12 @@ class NougatOCREngine:
             self.model.eval()
             print(f"[Nougat] Model initialized successfully on device: {self.device}")
         except Exception as err:
-            print(f"[Nougat Warning] Failed to load Nougat ({err}). Falling back.")
+            import traceback
+            print(f"[Nougat Error] Failed to load Nougat ({err}):")
+            traceback.print_exc()
             self.model = None
             self.processor = None
+            raise RuntimeError(f"Failed to load Meta Nougat model: {err}")
 
     def recognize_page(self, image_input: Union[np.ndarray, str, Image.Image]) -> str:
         """
