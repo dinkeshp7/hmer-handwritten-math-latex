@@ -94,6 +94,8 @@ class NougatOCREngine:
             gen_kwargs = {
                 "min_length": 1,
                 "max_new_tokens": 1024,
+                "repetition_penalty": 1.2,
+                "no_repeat_ngram_size": 4,
             }
             if hasattr(self.processor, "tokenizer") and getattr(self.processor.tokenizer, "unk_token_id", None) is not None:
                 gen_kwargs["bad_words_ids"] = [[self.processor.tokenizer.unk_token_id]]
@@ -105,6 +107,18 @@ class NougatOCREngine:
                 cleaned_latex = self.processor.post_process_generation(decoded, fix_markdown=True)
             except Exception:
                 cleaned_latex = decoded
+
+            # Deduplicate consecutive repeated math blocks
+            dedup_lines = []
+            prev_line = ""
+            for line in cleaned_latex.splitlines():
+                stripped = line.strip()
+                if stripped and stripped == prev_line:
+                    continue
+                dedup_lines.append(line)
+                if stripped:
+                    prev_line = stripped
+            cleaned_latex = "\n".join(dedup_lines)
             return cleaned_latex
         except Exception as err:
             import traceback
