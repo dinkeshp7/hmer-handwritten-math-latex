@@ -76,23 +76,12 @@ def main():
         for c in candidates:
             if os.path.exists(c):
                 img = cv2.imread(c, cv2.IMREAD_GRAYSCALE)
-                break
+                if img is not None:
+                    print(f"Loaded image from candidate path: {c}")
+                    break
 
     if img is None:
-        print(f"[Notice] Input image '{args.image_path}' not found on disk. Generating representative exam script image...")
-        img = np.full((1200, 850), 255, dtype=np.uint8)
-        cv2.putText(img, "Given, S in M_4x4(R)", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.9, 0, 2)
-        cv2.putText(img, "Here, collection of matrices whose 4th column = sum(1st, 2nd, 3rd)", (50, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.7, 0, 2)
-        cv2.putText(img, "(3) => -1 + 1.5 + 2.5 = 4 - 1 = 3", (50, 280), cv2.FONT_HERSHEY_SIMPLEX, 0.8, 0, 2)
-        cv2.putText(img, "=> 3.5 - 2 + 0.5 = 4 - 2 = 2", (50, 360), cv2.FONT_HERSHEY_SIMPLEX, 0.8, 0, 2)
-        cv2.putText(img, "=> 4.5 + 2.5 - 3 = 7 - 3 = 4", (50, 440), cv2.FONT_HERSHEY_SIMPLEX, 0.8, 0, 2)
-        cv2.putText(img, "=> -0.5 - 1.5 + 3 = 3 - 2 = 1", (50, 520), cv2.FONT_HERSHEY_SIMPLEX, 0.8, 0, 2)
-        cv2.putText(img, "Arithmetically A or S is subset of M_4x4(R) since all conditions are true.", (50, 620), cv2.FONT_HERSHEY_SIMPLEX, 0.7, 0, 2)
-        cv2.rectangle(img, (50, 700), (450, 950), 0, 2)
-        cv2.putText(img, "-1  1.5  2.5  3", (80, 750), cv2.FONT_HERSHEY_SIMPLEX, 0.7, 0, 2)
-        cv2.putText(img, "3.5 -2  0.5  2", (80, 810), cv2.FONT_HERSHEY_SIMPLEX, 0.7, 0, 2)
-        cv2.putText(img, "4.5 2.5 -3   4", (80, 870), cv2.FONT_HERSHEY_SIMPLEX, 0.7, 0, 2)
-        cv2.putText(img, "-0.5 -1.5 3  1", (80, 930), cv2.FONT_HERSHEY_SIMPLEX, 0.7, 0, 2)
+        raise FileNotFoundError(f"Input image not found on disk: '{args.image_path}'. Checked local and /scratch paths.")
 
     # Initialize master pipeline
     ckpt = args.checkpoint if os.path.exists(args.checkpoint) else None

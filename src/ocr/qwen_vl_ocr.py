@@ -101,7 +101,15 @@ class QwenVLOCREngine:
                     kwargs["torch_dtype"] = torch.float16
                 if self.load_in_4bit:
                     kwargs["load_in_4bit"] = True
-            
+                
+                # Enable memory-efficient SDPA (Cutlass kernel) on Tesla V100 (sm_70)
+                try:
+                    torch.backends.cuda.enable_flash_sdp(False)
+                    torch.backends.cuda.enable_mem_efficient_sdp(True)
+                    torch.backends.cuda.enable_math_sdp(True)
+                except Exception:
+                    pass
+
             try:
                 kwargs_sdpa = dict(kwargs, attn_implementation="sdpa")
                 self.model = model_cls.from_pretrained(target_path, **kwargs_sdpa)
@@ -187,8 +195,14 @@ class QwenVLOCREngine:
             if hasattr(self.model, "dtype") and "pixel_values" in inputs:
                 inputs["pixel_values"] = inputs["pixel_values"].to(dtype=self.model.dtype)
 
+            gen_kwargs = {
+                "max_new_tokens": 2048,
+                "do_sample": False,
+                "repetition_penalty": 1.1,
+            }
+
             with torch.no_grad():
-                generated_ids = self.model.generate(**inputs, max_new_tokens=2048)
+                generated_ids = self.model.generate(**inputs, **gen_kwargs)
                 generated_ids_trimmed = [
                     out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
                 ]
@@ -209,8 +223,13 @@ class QwenVLOCREngine:
                 if hasattr(self.model, "dtype") and "pixel_values" in inputs:
                     inputs["pixel_values"] = inputs["pixel_values"].to(dtype=self.model.dtype)
 
+                gen_kwargs = {
+                    "max_new_tokens": 2048,
+                    "do_sample": False,
+                    "repetition_penalty": 1.1,
+                }
                 with torch.no_grad():
-                    generated_ids = self.model.generate(**inputs, max_new_tokens=2048)
+                    generated_ids = self.model.generate(**inputs, **gen_kwargs)
                     generated_ids_trimmed = [
                         out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
                     ]
