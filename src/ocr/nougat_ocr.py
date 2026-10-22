@@ -101,7 +101,10 @@ class NougatOCREngine:
             with torch.no_grad():
                 outputs = self.model.generate(pixel_values, **gen_kwargs)
             decoded = self.processor.batch_decode(outputs, skip_special_tokens=True)[0]
-            cleaned_latex = self.processor.post_process_generation(decoded, fix_markdown=True)
+            try:
+                cleaned_latex = self.processor.post_process_generation(decoded, fix_markdown=True)
+            except Exception:
+                cleaned_latex = decoded
             return cleaned_latex
         except Exception as err:
             import traceback
