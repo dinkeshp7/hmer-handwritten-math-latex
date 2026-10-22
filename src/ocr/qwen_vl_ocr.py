@@ -60,7 +60,17 @@ class QwenVLOCREngine:
                 print(f"[Qwen-VL] Loading model weights for: {target_path}")
 
             from transformers import AutoProcessor
-            self.processor = AutoProcessor.from_pretrained(target_path)
+            # Limit dynamic resolution bounds to prevent CUDA OOM on high-res answer script scans
+            min_pixels = 256 * 28 * 28
+            max_pixels = 1024 * 28 * 28
+            try:
+                self.processor = AutoProcessor.from_pretrained(
+                    target_path,
+                    min_pixels=min_pixels,
+                    max_pixels=max_pixels
+                )
+            except Exception:
+                self.processor = AutoProcessor.from_pretrained(target_path)
 
             # Auto-detect best model class
             model_cls = None
@@ -92,7 +102,11 @@ class QwenVLOCREngine:
                 if self.load_in_4bit:
                     kwargs["load_in_4bit"] = True
             
-            self.model = model_cls.from_pretrained(target_path, **kwargs)
+            try:
+                kwargs_sdpa = dict(kwargs, attn_implementation="sdpa")
+                self.model = model_cls.from_pretrained(target_path, **kwargs_sdpa)
+            except Exception:
+                self.model = model_cls.from_pretrained(target_path, **kwargs)
             if not self.load_in_4bit and self.device:
                 self.model = self.model.to(self.device)
             self.model.eval()
@@ -125,6 +139,13 @@ class QwenVLOCREngine:
             image = image_input.convert("RGB")
         else:
             return ""
+
+        # Resize oversized scan images to max 1280px dimension to avoid quadratic attention OOM on 16GB GPUs
+        max_dim = 1280
+        if max(image.size) > max_dim:
+            ratio = max_dim / float(max(image.size))
+            new_size = (int(image.size[0] * ratio), int(image.size[1] * ratio))
+            image = image.resize(new_size, Image.Resampling.LANCZOS)
 
         prompt = (
             "You are an expert mathematical document transcription assistant. "
