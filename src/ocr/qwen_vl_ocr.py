@@ -163,6 +163,9 @@ class QwenVLOCREngine:
                 return_tensors="pt"
             ).to(self.device)
 
+            if hasattr(self.model, "dtype") and "pixel_values" in inputs:
+                inputs["pixel_values"] = inputs["pixel_values"].to(dtype=self.model.dtype)
+
             with torch.no_grad():
                 generated_ids = self.model.generate(**inputs, max_new_tokens=2048)
                 generated_ids_trimmed = [
@@ -181,6 +184,10 @@ class QwenVLOCREngine:
                     padding=True,
                     return_tensors="pt"
                 ).to(self.device)
+
+                if hasattr(self.model, "dtype") and "pixel_values" in inputs:
+                    inputs["pixel_values"] = inputs["pixel_values"].to(dtype=self.model.dtype)
+
                 with torch.no_grad():
                     generated_ids = self.model.generate(**inputs, max_new_tokens=2048)
                     generated_ids_trimmed = [

@@ -85,7 +85,7 @@ class FullPageLaTeXPipeline:
         # Engine: Qwen2.5-VL Vision-Language Model
         if self.engine == "qwen_vl":
             tex_doc = self.qwen_vl_engine.recognize_page(image_gray, roll_number=roll_number)
-            if tex_doc and len(tex_doc) > 50:
+            if tex_doc and len(tex_doc.strip()) > 0:
                 return {
                     "num_regions_segmented": 1,
                     "num_lines_processed": 1,
@@ -101,7 +101,7 @@ class FullPageLaTeXPipeline:
         # Engine: Meta Nougat End-to-End Academic Model
         elif self.engine == "nougat":
             tex_doc = self.nougat_engine.recognize_page(image_gray)
-            if tex_doc and len(tex_doc) > 50:
+            if tex_doc and len(tex_doc.strip()) > 0:
                 formatted_tex = self.generator.generate_tex_document([], roll_number=roll_number)
                 # Embed nougat markdown/latex into document body
                 formatted_tex = formatted_tex.replace("\\section*{Solution}\n\n", f"\\section*{{Solution}}\n\n{tex_doc}\n\n")

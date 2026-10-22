@@ -22,6 +22,7 @@ echo "======================================================================"
 
 SCRATCH_DIR="/scratch/p.dinkesh/hmer_project"
 cd "$SCRATCH_DIR" || exit 1
+mkdir -p "$SCRATCH_DIR/logs"
 
 module purge
 module load cuda/11.7
