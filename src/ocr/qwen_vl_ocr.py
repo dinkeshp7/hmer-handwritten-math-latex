@@ -62,7 +62,7 @@ class QwenVLOCREngine:
             from transformers import AutoProcessor
             # Limit dynamic resolution bounds to prevent CUDA OOM on high-res answer script scans
             min_pixels = 256 * 28 * 28
-            max_pixels = 1024 * 28 * 28
+            max_pixels = 1280 * 28 * 28
             try:
                 self.processor = AutoProcessor.from_pretrained(
                     target_path,
@@ -155,23 +155,32 @@ class QwenVLOCREngine:
             new_size = (int(image.size[0] * ratio), int(image.size[1] * ratio))
             image = image.resize(new_size, Image.Resampling.LANCZOS)
 
-        prompt = (
-            "You are an expert mathematical document transcription assistant. "
-            "Please transcribe the handwritten mathematics examination solution in this image into complete, compilable LaTeX code. "
-            "Follow these strict formatting guidelines:\n"
-            "1. Transcribe all mathematical equations into standard LaTeX math environments (e.g. \\[ ... \\] or \\begin{align*} ... \\end{align*}).\n"
-            "2. Convert any matrices into \\begin{bmatrix} ... \\end{bmatrix}.\n"
-            "3. Accurately preserve all English mathematical reasoning, theorem citations, and explanatory prose.\n"
-            "4. Ignore any crossed-out scribbles or scratch-outs.\n"
-            "5. Return the solution wrapped in standard article document structure with amsmath, amssymb, and geometry packages."
+        system_prompt = (
+            "You are an expert scientific document transcription system specializing in university handwritten mathematics examination scripts.\n"
+            "Your task is to transcribe the handwritten mathematics examination solution shown in the image into valid, compilable, standalone LaTeX code.\n\n"
+            "STRICT TRANSCRIPTION & FIDELITY RULES:\n"
+            "1. STRICT FIDELITY: Transcribe exactly what the student wrote. Do NOT solve the problem, do NOT simplify expressions, do NOT correct arithmetic mistakes, and do NOT complete unfinished derivations. Preserve the student's exact mathematical notations and steps.\n"
+            "2. IGNORE CANCELLED INK: Strictly ignore any scribbles, strike-throughs, or crossed-out mathematical text and equations.\n"
+            "3. MATHEMATICAL ENVIRONMENTS:\n"
+            "   - Use $ ... $ for inline variables, numbers, and expressions inside text sentences.\n"
+            "   - Use displayed math environments \\[ ... \\] or \\begin{align*} ... \\end{align*} for standalone multi-line equations and derivations.\n"
+            "   - Format matrices using standard LaTeX environments: \\begin{bmatrix} ... \\end{bmatrix} or \\begin{pmatrix} ... \\end{pmatrix} with '&' for column separation and '\\\\' for row breaks.\n"
+            "   - Format piecewise definitions or equation systems using \\begin{cases} ... \\end{cases} or \\begin{aligned} ... \\end{aligned}.\n"
+            "   - Transcribe standard linear algebra and calculus symbols accurately (\\in, \\notin, \\subseteq, \\mathbb{R}, \\lambda, \\vec{v}, \\boxed{...}).\n"
+            "4. PRESERVE REASONING: Faithfully transcribe all explanatory prose, theorem statements, basis definitions, and English sentences written by the student.\n"
+            "5. NO MARKDOWN: Output pure LaTeX code ONLY. Do NOT wrap output in markdown code fences (no ```, no ```latex, no ```markdown). Do NOT use markdown headers (no ## or ###). Use standard LaTeX sectioning (\\subsection*{...} or \\textbf{...}).\n"
+            "6. COMPLETE COMPILABLE DOCUMENT: Produce a complete, standalone LaTeX document starting with \\documentclass and ending with \\end{document}."
         )
 
+        user_prompt = "Transcribe the handwritten mathematics examination solution in this image into a complete, compilable LaTeX document adhering strictly to the system instructions."
+
         messages = [
+            {"role": "system", "content": system_prompt},
             {
                 "role": "user",
                 "content": [
                     {"type": "image", "image": image},
-                    {"type": "text", "text": prompt}
+                    {"type": "text", "text": user_prompt}
                 ]
             }
         ]
@@ -179,6 +188,44 @@ class QwenVLOCREngine:
         output_text = ""
         if HAS_TORCH and torch.cuda.is_available():
             torch.backends.cudnn.enabled = False
+
+        # Build stopping criteria for \\end{document} to prevent trailing repetition loops
+        stopping_criteria = None
+        try:
+            from transformers import StopStringCriteria, StoppingCriteriaList
+            tokenizer = getattr(self.processor, "tokenizer", None) or self.processor
+            if hasattr(tokenizer, "encode"):
+                stopping_criteria = StoppingCriteriaList([
+                    StopStringCriteria(tokenizer=tokenizer, stop_strings=["\\end{document}"])
+                ])
+        except Exception:
+            stopping_criteria = None
+
+        if stopping_criteria is None:
+            try:
+                from transformers import StoppingCriteria, StoppingCriteriaList
+                class EndDocStoppingCriteria(StoppingCriteria):
+                    def __init__(self, tokenizer, stop_text="\\end{document}"):
+                        self.tokenizer = tokenizer
+                        self.stop_text = stop_text
+                    def __call__(self, input_ids, scores, **kwargs):
+                        tail_ids = input_ids[0, -25:]
+                        decoded = self.tokenizer.decode(tail_ids, skip_special_tokens=True)
+                        return self.stop_text in decoded
+
+                tokenizer = getattr(self.processor, "tokenizer", None) or self.processor
+                if hasattr(tokenizer, "decode"):
+                    stopping_criteria = StoppingCriteriaList([EndDocStoppingCriteria(tokenizer)])
+            except Exception:
+                pass
+
+        gen_kwargs: Dict[str, Any] = {
+            "max_new_tokens": 2560,
+            "do_sample": False,
+            "repetition_penalty": 1.10,
+        }
+        if stopping_criteria is not None:
+            gen_kwargs["stopping_criteria"] = stopping_criteria
 
         try:
             from qwen_vl_utils import process_vision_info
@@ -194,12 +241,6 @@ class QwenVLOCREngine:
 
             if hasattr(self.model, "dtype") and "pixel_values" in inputs:
                 inputs["pixel_values"] = inputs["pixel_values"].to(dtype=self.model.dtype)
-
-            gen_kwargs = {
-                "max_new_tokens": 2048,
-                "do_sample": False,
-                "repetition_penalty": 1.1,
-            }
 
             with torch.no_grad():
                 generated_ids = self.model.generate(**inputs, **gen_kwargs)
@@ -223,11 +264,6 @@ class QwenVLOCREngine:
                 if hasattr(self.model, "dtype") and "pixel_values" in inputs:
                     inputs["pixel_values"] = inputs["pixel_values"].to(dtype=self.model.dtype)
 
-                gen_kwargs = {
-                    "max_new_tokens": 2048,
-                    "do_sample": False,
-                    "repetition_penalty": 1.1,
-                }
                 with torch.no_grad():
                     generated_ids = self.model.generate(**inputs, **gen_kwargs)
                     generated_ids_trimmed = [
@@ -242,33 +278,52 @@ class QwenVLOCREngine:
                 traceback.print_exc()
                 return ""
 
-        # Post-processing: extract clean LaTeX code
+        # Post-processing: extract clean LaTeX code programmatically
         cleaned_text = output_text.strip()
-        
-        # Remove markdown fences if wrapped in ```latex ... ``` or ```tex ... ```
-        if "```latex" in cleaned_text:
-            match = re.search(r"```latex\s*(.*?)\s*```", cleaned_text, re.DOTALL)
-            if match:
-                cleaned_text = match.group(1).strip()
-        elif "```tex" in cleaned_text:
-            match = re.search(r"```tex\s*(.*?)\s*```", cleaned_text, re.DOTALL)
-            if match:
-                cleaned_text = match.group(1).strip()
-        elif "```" in cleaned_text:
-            match = re.search(r"```\s*(.*?)\s*```", cleaned_text, re.DOTALL)
-            if match:
-                cleaned_text = match.group(1).strip()
 
-        # If document structure was not included by the model, wrap in standard document preamble
+        # 1. Strip markdown fences if present
+        cleaned_text = re.sub(r"^```(?:markdown|latex|tex)?\s*", "", cleaned_text, flags=re.MULTILINE)
+        cleaned_text = re.sub(r"\s*```$", "", cleaned_text, flags=re.MULTILINE)
+        cleaned_text = re.sub(r"```(?:markdown|latex|tex)?", "", cleaned_text)
+        cleaned_text = cleaned_text.replace("```", "").strip()
+
+        # 2. If text contains \end{document}, truncate any leaked trailing tokens after it
+        if "\\end{document}" in cleaned_text:
+            cleaned_text = cleaned_text.split("\\end{document}")[0] + "\\end{document}"
+
+        # 3. Transpile any residual markdown headings into standard LaTeX sectioning
+        cleaned_text = re.sub(r"^###\s+(.*)$", r"\\subsubsection*{\1}", cleaned_text, flags=re.MULTILINE)
+        cleaned_text = re.sub(r"^##\s+(.*)$", r"\\subsection*{\1}", cleaned_text, flags=re.MULTILINE)
+        cleaned_text = re.sub(r"^#\s+(.*)$", r"\\section*{\1}", cleaned_text, flags=re.MULTILINE)
+
+        # 4. Convert markdown bold (**text**) to LaTeX \textbf{text}
+        cleaned_text = re.sub(r"\*\*(.*?)\*\*", r"\\textbf{\1}", cleaned_text)
+
+        # 5. Generic consecutive identical line deduplication within equation/matrix blocks
+        lines = cleaned_text.splitlines()
+        deduped_lines = []
+        for line in lines:
+            stripped = line.strip()
+            if (
+                deduped_lines
+                and stripped
+                and stripped == deduped_lines[-1].strip()
+                and any(kw in stripped for kw in ["pmatrix", "bmatrix", "array", "align", "begin", "end"])
+            ):
+                continue
+            deduped_lines.append(line)
+        cleaned_text = "\n".join(deduped_lines)
+
+        # 6. Ensure full compilable document structure
         if "\\documentclass" not in cleaned_text:
-            roll = roll_number or "Unknown"
+            roll = roll_number or "Student"
             cleaned_text = (
                 "\\documentclass[12pt]{article}\n"
                 "\\usepackage[utf8]{inputenc}\n"
                 "\\usepackage{amsmath, amssymb, amsfonts}\n"
                 "\\usepackage{geometry}\n"
                 "\\geometry{a4paper, margin=1in}\n"
-                "\\title{MA102 Answer Script Solution}\n"
+                "\\title{MA102 Examination Solution}\n"
                 f"\\author{{Roll Number: {roll}}}\n"
                 "\\date{\\today}\n"
                 "\\begin{document}\n"

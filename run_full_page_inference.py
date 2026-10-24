@@ -45,17 +45,26 @@ def main():
     parser = argparse.ArgumentParser(description="Full-Page Answer Script to LaTeX Neural Converter")
     parser.add_argument("--image_path", type=str, default="page-210103096-01.jpg", help="Path to input answer script image")
     parser.add_argument("--checkpoint", type=str, default="/scratch/p.dinkesh/hmer_project/checkpoints/hmer_checkpoint_epoch_010.pth", help="Trained HMER checkpoint path")
-    parser.add_argument("--roll_number", type=str, default="210103096", help="Student roll number")
+    parser.add_argument("--roll_number", type=str, default=None, help="Student roll number")
     parser.add_argument("--output_tex", type=str, default="output_solution.tex", help="Path to save output LaTeX file")
     parser.add_argument("--engine", type=str, default="hybrid", choices=["hybrid", "nougat", "qwen_vl"], help="OCR Engine: 'hybrid' (Dual-Head TrOCR+pix2tex), 'nougat' (Meta Nougat), 'qwen_vl' (Qwen2.5-VL SOTA)")
     parser.add_argument("--model_name", type=str, default=None, help="Specific HuggingFace model repo or path (e.g. Qwen/Qwen2.5-VL-7B-Instruct or facebook/nougat-small)")
     args = parser.parse_args()
 
+    # Generic dynamic roll number inference from filename if not specified
+    roll_number = args.roll_number
+    if not roll_number:
+        match = re.search(r"(\d{7,10})", os.path.basename(args.image_path))
+        if match:
+            roll_number = match.group(1)
+        else:
+            roll_number = "210103096"
+
     print("======================================================================")
     print("  TRAINED HMER NEURAL MODEL FULL-PAGE LATEX CONVERTER OUTPUT")
     print("======================================================================")
     print(f"Filename            : {os.path.basename(args.image_path)}")
-    print(f"Student Roll Number : {args.roll_number}")
+    print(f"Student Roll Number : {roll_number}")
     print(f"Engine Selected     : {args.engine}")
     if args.model_name:
         print(f"Model Specified     : {args.model_name}")
@@ -92,7 +101,7 @@ def main():
     )
 
     # Process page
-    result = pipeline.process_full_page(img, roll_number=args.roll_number)
+    result = pipeline.process_full_page(img, roll_number=roll_number)
 
     print(f"Segmented Regions   : {result['num_regions_segmented']}")
     print(f"Processed Lines     : {result['num_lines_processed']}")
