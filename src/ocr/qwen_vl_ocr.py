@@ -60,9 +60,9 @@ class QwenVLOCREngine:
                 print(f"[Qwen-VL] Loading model weights for: {target_path}")
 
             from transformers import AutoProcessor
-            # Limit dynamic resolution bounds to prevent CUDA OOM on high-res answer script scans
+            # Dynamic resolution bounds calibrated for Tesla V100 (16GB VRAM)
             min_pixels = 256 * 28 * 28
-            max_pixels = 1280 * 28 * 28
+            max_pixels = 1024 * 28 * 28
             try:
                 self.processor = AutoProcessor.from_pretrained(
                     target_path,
@@ -155,7 +155,8 @@ class QwenVLOCREngine:
             new_size = (int(image.size[0] * ratio), int(image.size[1] * ratio))
             image = image.resize(new_size, Image.Resampling.LANCZOS)
 
-        system_prompt = (
+        # Generic, strict academic transcription prompt
+        prompt = (
             "You are an expert scientific document transcription system specializing in university handwritten mathematics examination scripts.\n"
             "Your task is to transcribe the handwritten mathematics examination solution shown in the image into valid, compilable, standalone LaTeX code.\n\n"
             "STRICT TRANSCRIPTION & FIDELITY RULES:\n"
@@ -172,15 +173,12 @@ class QwenVLOCREngine:
             "6. COMPLETE COMPILABLE DOCUMENT: Produce a complete, standalone LaTeX document starting with \\documentclass and ending with \\end{document}."
         )
 
-        user_prompt = "Transcribe the handwritten mathematics examination solution in this image into a complete, compilable LaTeX document adhering strictly to the system instructions."
-
         messages = [
-            {"role": "system", "content": system_prompt},
             {
                 "role": "user",
                 "content": [
                     {"type": "image", "image": image},
-                    {"type": "text", "text": user_prompt}
+                    {"type": "text", "text": prompt}
                 ]
             }
         ]
@@ -189,43 +187,12 @@ class QwenVLOCREngine:
         if HAS_TORCH and torch.cuda.is_available():
             torch.backends.cudnn.enabled = False
 
-        # Build stopping criteria for \\end{document} to prevent trailing repetition loops
-        stopping_criteria = None
-        try:
-            from transformers import StopStringCriteria, StoppingCriteriaList
-            tokenizer = getattr(self.processor, "tokenizer", None) or self.processor
-            if hasattr(tokenizer, "encode"):
-                stopping_criteria = StoppingCriteriaList([
-                    StopStringCriteria(tokenizer=tokenizer, stop_strings=["\\end{document}"])
-                ])
-        except Exception:
-            stopping_criteria = None
-
-        if stopping_criteria is None:
-            try:
-                from transformers import StoppingCriteria, StoppingCriteriaList
-                class EndDocStoppingCriteria(StoppingCriteria):
-                    def __init__(self, tokenizer, stop_text="\\end{document}"):
-                        self.tokenizer = tokenizer
-                        self.stop_text = stop_text
-                    def __call__(self, input_ids, scores, **kwargs):
-                        tail_ids = input_ids[0, -25:]
-                        decoded = self.tokenizer.decode(tail_ids, skip_special_tokens=True)
-                        return self.stop_text in decoded
-
-                tokenizer = getattr(self.processor, "tokenizer", None) or self.processor
-                if hasattr(tokenizer, "decode"):
-                    stopping_criteria = StoppingCriteriaList([EndDocStoppingCriteria(tokenizer)])
-            except Exception:
-                pass
-
+        # Stable, calibrated generation configuration tested on Tesla V100
         gen_kwargs: Dict[str, Any] = {
-            "max_new_tokens": 2560,
+            "max_new_tokens": 2048,
             "do_sample": False,
             "repetition_penalty": 1.10,
         }
-        if stopping_criteria is not None:
-            gen_kwargs["stopping_criteria"] = stopping_criteria
 
         try:
             from qwen_vl_utils import process_vision_info
