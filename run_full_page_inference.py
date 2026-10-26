@@ -12,6 +12,7 @@ Executes end-to-end full page conversion:
 
 import os
 import sys
+import re
 import ctypes
 import argparse
 from pathlib import Path
