@@ -47,15 +47,51 @@ class FullPageLaTeXPipeline:
     ):
         self.engine = engine.lower()
         self.model_name = model_name
-        self.preprocessor = ImagePreprocessor()
-        self.segmenter = PageLineSegmenter()
-        self.dispatcher = HybridRegionDispatcher(hmer_model=hmer_model, checkpoint_path=checkpoint_path)
-        self.sequencer = SpatialReadingOrderGraph()
-        self.generator = LaTeXDocumentGenerator()
+        self.hmer_model = hmer_model
+        self.checkpoint_path = checkpoint_path
         
-        # Lazy initialization for Nougat and Qwen-VL
+        # Lazy initialization for all engines and modules:
+        # Prevents redundant code from loading when executing end-to-end VLM (Qwen-VL)
+        self._preprocessor = None
+        self._segmenter = None
+        self._dispatcher = None
+        self._sequencer = None
+        self._generator = None
         self._nougat = None
         self._qwen_vl = None
+
+    @property
+    def preprocessor(self):
+        if self._preprocessor is None:
+            self._preprocessor = ImagePreprocessor()
+        return self._preprocessor
+
+    @property
+    def segmenter(self):
+        if self._segmenter is None:
+            self._segmenter = PageLineSegmenter()
+        return self._segmenter
+
+    @property
+    def dispatcher(self):
+        if self._dispatcher is None:
+            self._dispatcher = HybridRegionDispatcher(
+                hmer_model=self.hmer_model,
+                checkpoint_path=self.checkpoint_path
+            )
+        return self._dispatcher
+
+    @property
+    def sequencer(self):
+        if self._sequencer is None:
+            self._sequencer = SpatialReadingOrderGraph()
+        return self._sequencer
+
+    @property
+    def generator(self):
+        if self._generator is None:
+            self._generator = LaTeXDocumentGenerator()
+        return self._generator
 
     @property
     def nougat_engine(self):
