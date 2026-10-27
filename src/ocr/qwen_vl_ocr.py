@@ -155,12 +155,12 @@ class QwenVLOCREngine:
             new_size = (int(image.size[0] * ratio), int(image.size[1] * ratio))
             image = image.resize(new_size, Image.Resampling.LANCZOS)
 
-        # Generic, strict academic transcription prompt
+        # Generic, strict academic transcription prompt for both handwritten and printed documents
         prompt = (
-            "You are an expert scientific document transcription system specializing in university handwritten mathematics examination scripts.\n"
-            "Your task is to transcribe the handwritten mathematics examination solution shown in the image into valid, compilable, standalone LaTeX code.\n\n"
+            "You are an expert scientific document transcription system specializing in university mathematics examination papers and solutions.\n"
+            "Your task is to transcribe the mathematics examination document or solution shown in the image (whether handwritten or printed) into valid, compilable, standalone LaTeX code.\n\n"
             "STRICT TRANSCRIPTION & FIDELITY RULES:\n"
-            "1. STRICT FIDELITY: Transcribe exactly what the student wrote. Do NOT solve the problem, do NOT simplify expressions, do NOT correct arithmetic mistakes, and do NOT complete unfinished derivations. Preserve the student's exact mathematical notations and steps.\n"
+            "1. STRICT FIDELITY: Transcribe exactly what is written in the document. Do NOT solve the problem, do NOT simplify expressions, do NOT correct mistakes, and do NOT complete unfinished derivations. Preserve the exact mathematical notations, equations, and steps.\n"
             "2. IGNORE CANCELLED INK: Strictly ignore any scribbles, strike-throughs, or crossed-out mathematical text and equations.\n"
             "3. MATHEMATICAL ENVIRONMENTS:\n"
             "   - Use $ ... $ for inline variables, numbers, and expressions inside text sentences.\n"
@@ -168,7 +168,7 @@ class QwenVLOCREngine:
             "   - Format matrices using standard LaTeX environments: \\begin{bmatrix} ... \\end{bmatrix} or \\begin{pmatrix} ... \\end{pmatrix} with '&' for column separation and '\\\\' for row breaks.\n"
             "   - Format piecewise definitions or equation systems using \\begin{cases} ... \\end{cases} or \\begin{aligned} ... \\end{aligned}.\n"
             "   - Transcribe standard linear algebra and calculus symbols accurately (\\in, \\notin, \\subseteq, \\mathbb{R}, \\lambda, \\vec{v}, \\boxed{...}).\n"
-            "4. PRESERVE REASONING: Faithfully transcribe all explanatory prose, theorem statements, basis definitions, and English sentences written by the student.\n"
+            "4. PRESERVE REASONING: Faithfully transcribe all explanatory prose, theorem statements, basis definitions, and English sentences written in the document.\n"
             "5. NO MARKDOWN: Output pure LaTeX code ONLY. Do NOT wrap output in markdown code fences (no ```, no ```latex, no ```markdown). Do NOT use markdown headers (no ## or ###). Use standard LaTeX sectioning (\\subsection*{...} or \\textbf{...}).\n"
             "6. COMPLETE COMPILABLE DOCUMENT: Produce a complete, standalone LaTeX document starting with \\documentclass and ending with \\end{document}."
         )
@@ -189,7 +189,7 @@ class QwenVLOCREngine:
 
         # Stable, calibrated generation configuration tested on Tesla V100
         gen_kwargs: Dict[str, Any] = {
-            "max_new_tokens": 2048,
+            "max_new_tokens": 2560,
             "do_sample": False,
             "repetition_penalty": 1.10,
         }
