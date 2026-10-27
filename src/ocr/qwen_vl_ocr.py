@@ -206,7 +206,11 @@ class QwenVLOCREngine:
             "8. COMPILABLE DOCUMENT: Produce a complete, standalone LaTeX document starting with \\documentclass[12pt]{article} and ending with \\end{document}."
         )
 
-        user_prompt = "Transcribe every single handwritten equation, matrix, and text line from this examination script image into complete, compilable LaTeX code verbatim. Output LaTeX code only. Do NOT write Python code and do NOT describe the image."
+        user_prompt = (
+            "Transcribe all mathematical expressions, matrices, row operations, derivations, "
+            "and text from this image (whether handwritten or printed) into complete, compilable LaTeX code verbatim. "
+            "Output LaTeX code only. Do NOT write Python code and do NOT describe the image."
+        )
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -282,13 +286,13 @@ class QwenVLOCREngine:
                 traceback.print_exc()
                 return ""
 
-        # Post-processing: extract clean LaTeX code programmatically
+        # Post-processing: extract clean, fully-compilable LaTeX code programmatically
         cleaned_text = output_text.strip()
 
-        # 1. Strip markdown fences if present
-        cleaned_text = re.sub(r"^```(?:markdown|latex|tex)?\s*", "", cleaned_text, flags=re.MULTILINE)
+        # 1. Strip markdown fences (any language tag, e.g. ```latex, ```markdown, ```python)
+        cleaned_text = re.sub(r"^```[a-zA-Z0-9_\-]*\s*", "", cleaned_text, flags=re.MULTILINE)
         cleaned_text = re.sub(r"\s*```$", "", cleaned_text, flags=re.MULTILINE)
-        cleaned_text = re.sub(r"```(?:markdown|latex|tex)?", "", cleaned_text)
+        cleaned_text = re.sub(r"```[a-zA-Z0-9_\-]*", "", cleaned_text)
         cleaned_text = cleaned_text.replace("```", "").strip()
 
         # 2. Extract strictly from \documentclass if present
@@ -315,19 +319,28 @@ class QwenVLOCREngine:
         for pattern in conversational_patterns:
             cleaned_text = re.sub(pattern, "", cleaned_text, flags=re.MULTILINE).strip()
 
-        # 5. Transpile any residual markdown headings into standard LaTeX sectioning
+        # 5. Eliminate leaked Python imports / functions if model attempted coding
+        if any(k in cleaned_text for k in ["import numpy", "np.array", "def f(", "np.linalg"]):
+            cleaned_text = re.sub(r"(?m)^(?:python\s*)?import\s+[a-zA-Z0-9_]+.*$", "", cleaned_text)
+            cleaned_text = re.sub(r"(?m)^from\s+[a-zA-Z0-9_]+\s+import.*$", "", cleaned_text)
+            cleaned_text = re.sub(r"(?m)^def\s+[a-zA-Z0-9_]+\(.*?\):.*$", "", cleaned_text)
+            cleaned_text = re.sub(r"(?m)^print\(.*?\).*$", "", cleaned_text)
+            cleaned_text = re.sub(r"(?m)^[A-Za-z0-9_]+\s*=\s*np\.[a-zA-Z0-9_]+.*$", "", cleaned_text)
+            cleaned_text = re.sub(r"(?m)^This Python (?:code|program).*$", "", cleaned_text)
+
+        # 6. Transpile any residual markdown headings into standard LaTeX sectioning
         cleaned_text = re.sub(r"^###\s+(.*)$", r"\\subsubsection*{\1}", cleaned_text, flags=re.MULTILINE)
         cleaned_text = re.sub(r"^##\s+(.*)$", r"\\subsection*{\1}", cleaned_text, flags=re.MULTILINE)
         cleaned_text = re.sub(r"^#\s+(.*)$", r"\\section*{\1}", cleaned_text, flags=re.MULTILINE)
 
-        # 6. Convert markdown bold (**text**) to LaTeX \textbf{text}
+        # 7. Convert markdown bold (**text**) to LaTeX \textbf{text}
         cleaned_text = re.sub(r"\*\*(.*?)\*\*", r"\\textbf{\1}", cleaned_text)
 
-        # 7. Collapse excessive repeating token loops (e.g. 0, 0, 0, 0, 0, 0...)
+        # 8. Collapse excessive repeating token loops (e.g. 0, 0, 0, 0, 0, 0...)
         cleaned_text = re.sub(r'(?:\b0,\s*){6,}', r'0, \\dots, 0, ', cleaned_text)
         cleaned_text = re.sub(r'(?:\b0\s+&?\s*){6,}', r'0 & \\dots & 0 ', cleaned_text)
 
-        # 8. Generic consecutive identical line deduplication within equation/matrix blocks
+        # 9. Generic consecutive identical line deduplication within equation/matrix blocks
         lines = cleaned_text.splitlines()
         deduped_lines = []
         for line in lines:
@@ -340,15 +353,17 @@ class QwenVLOCREngine:
             ):
                 continue
             deduped_lines.append(line)
-        cleaned_text = "\n".join(deduped_lines)
+        cleaned_text = "\n".join(deduped_lines).strip()
 
-        # 9. Ensure full compilable document structure
+        # 10. Ensure full compilable document structure with all mathematical packages
+        req_pkgs = ["amsmath", "amssymb", "amsfonts", "mathtools", "array"]
         if "\\documentclass" not in cleaned_text:
             roll = roll_number or "Student"
+            pkg_lines = "\n".join([f"\\usepackage{{{p}}}" for p in req_pkgs])
             cleaned_text = (
                 "\\documentclass[12pt]{article}\n"
                 "\\usepackage[utf8]{inputenc}\n"
-                "\\usepackage{amsmath, amssymb, amsfonts}\n"
+                f"{pkg_lines}\n"
                 "\\usepackage{geometry}\n"
                 "\\geometry{a4paper, margin=1in}\n"
                 "\\title{MA102 Examination Solution}\n"
@@ -360,6 +375,34 @@ class QwenVLOCREngine:
                 f"{cleaned_text}\n\n"
                 "\\end{document}\n"
             )
+        else:
+            if "\\begin{document}" in cleaned_text:
+                preamble, body = cleaned_text.split("\\begin{document}", 1)
+                for pkg in req_pkgs:
+                    if pkg not in preamble:
+                        preamble += f"\n\\usepackage{{{pkg}}}"
+                cleaned_text = preamble + "\n\\begin{document}" + body
+
+        # 11. Balance any unclosed LaTeX environments (ensures compilability if generation stopped)
+        env_matches = re.findall(r'\\(begin|end)\{([a-zA-Z0-9*]+)\}', cleaned_text)
+        stack = []
+        for tag, name in env_matches:
+            if name == "document":
+                continue
+            if tag == "begin":
+                stack.append(name)
+            elif tag == "end":
+                if stack and stack[-1] == name:
+                    stack.pop()
+        if stack:
+            closing_str = "\n".join([f"\\end{{{env}}}" for env in reversed(stack)])
+            if "\\end{document}" in cleaned_text:
+                cleaned_text = cleaned_text.replace("\\end{document}", closing_str + "\n\\end{document}")
+            else:
+                cleaned_text += "\n" + closing_str
+
+        if "\\end{document}" not in cleaned_text:
+            cleaned_text += "\n\\end{document}"
 
         return cleaned_text
 

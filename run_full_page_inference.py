@@ -92,6 +92,19 @@ def main():
                     break
 
     if img is None:
+        # Recursive lookup across dataset directory (e.g. roll number subfolders)
+        base_name = os.path.basename(args.image_path)
+        for search_root in ["/scratch/p.dinkesh/hmer_project/data", "./data", "."]:
+            if os.path.exists(search_root):
+                matches = list(Path(search_root).glob(f"**/{base_name}"))
+                if matches:
+                    matched_path = str(matches[0])
+                    img = cv2.imread(matched_path, cv2.IMREAD_GRAYSCALE)
+                    if img is not None:
+                        print(f"Discovered image via recursive lookup: {matched_path}")
+                        break
+
+    if img is None:
         raise FileNotFoundError(f"Input image not found on disk: '{args.image_path}'. Checked local and /scratch paths.")
 
     # Initialize master pipeline
