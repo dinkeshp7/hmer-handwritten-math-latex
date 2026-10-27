@@ -195,16 +195,18 @@ class QwenVLOCREngine:
             "STRICT ZERO-HALLUCINATION & FIDELITY RULES:\n"
             "1. LITERAL INK ONLY: Transcribe strictly and verbatim what is written on the paper. Do NOT solve the problem, do NOT simplify expressions, do NOT correct arithmetic mistakes, and do NOT complete unfinished derivations.\n"
             "2. NEVER SUBSTITUTE TOY PROBLEMS: You must NEVER invent or substitute standard textbook problems (e.g. NEVER substitute with 2x2 inverse matrices or diag(1,2,3)). If an augmented matrix or a 4x4 matrix with decimal numbers is present (-1, 1.5, 2.5, 3, etc.), transcribe all 4 rows and all 4 columns exactly.\n"
-            "3. ZERO CONVERSATIONAL CHATTER: Do NOT output any conversational text, introductory remarks (e.g. 'The provided image contains...', 'Here is the transcription...'), bulleted summaries of the image, or concluding sign-offs. Output LaTeX code ONLY.\n"
-            "4. IGNORE SCRATCHES: Ignore scribbles, strike-throughs, or crossed-out mathematical text.\n"
-            "5. MATH ENVIRONMENTS:\n"
+            "3. ZERO CONVERSATIONAL CHATTER: Do NOT output any conversational text, introductory remarks (e.g. 'This image appears to be a scanned page...', 'The provided image contains...', 'Here is the transcription...'), bulleted summaries of the image, or concluding sign-offs. Output LaTeX code ONLY.\n"
+            "4. NO PROGRAMMING CODE: Absolutely NEVER generate Python code, NumPy, SymPy, or any programming scripts (NEVER output 'import numpy', 'np.array', 'def f(x)', or print statements). You are a LaTeX document OCR transcriber, NOT a software programmer. Transcribe all math into LaTeX equations ($ ... $, \\[ ... \\], \\begin{bmatrix} ... \\end{bmatrix}) ONLY.\n"
+            "5. NO FAKE CHAPTERS OR EXTERNAL INPUTS: Transcribe ONLY the text and math physically present on this specific page. NEVER invent textbook structures, fake '\\input{sections/...}' directives, or chapters on unrelated topics (like complex numbers or geometry) unless literally written on the page.\n"
+            "6. IGNORE SCRATCHES: Ignore scribbles, strike-throughs, or crossed-out mathematical text.\n"
+            "7. MATH ENVIRONMENTS:\n"
             "   - Use $ ... $ for inline math.\n"
             "   - Use \\[ ... \\] or \\begin{align*} ... \\end{align*} for displayed equations.\n"
             "   - Format matrices using standard \\begin{bmatrix} ... \\end{bmatrix} or augmented matrix environments.\n"
-            "6. COMPILABLE DOCUMENT: Produce a complete, standalone LaTeX document starting with \\documentclass[12pt]{article} and ending with \\end{document}."
+            "8. COMPILABLE DOCUMENT: Produce a complete, standalone LaTeX document starting with \\documentclass[12pt]{article} and ending with \\end{document}."
         )
 
-        user_prompt = "Transcribe every single handwritten equation, matrix, and text line from this examination script image into complete, compilable LaTeX code verbatim. Output LaTeX code only."
+        user_prompt = "Transcribe every single handwritten equation, matrix, and text line from this examination script image into complete, compilable LaTeX code verbatim. Output LaTeX code only. Do NOT write Python code and do NOT describe the image."
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -300,11 +302,15 @@ class QwenVLOCREngine:
         # 4. Strip conversational assistant descriptions & sign-offs
         conversational_patterns = [
             r"(?i)^.*?The provided image contains.*?\n+",
+            r"(?i)^.*?This image appears to be.*?\n+",
             r"(?i)^.*?Here is a (?:detailed )?description.*?\n+",
             r"(?i)^.*?The notes (?:cover|start with|are written).*?\n+",
+            r"(?i)^.*?To provide more detailed information.*?\n+",
             r"(?i)\n+.*?If you (?:need|have) (?:further|more) (?:assistance|questions).*?$",
             r"(?i)\n+.*?feel free to ask.*?$",
             r"(?i)\n+.*?Given the content and structure of the notes.*?$",
+            r"(?i)\n+.*?Given the complexity of the content.*?$",
+            r"(?i)\n+.*?This Python (?:code|program) defines.*?$",
         ]
         for pattern in conversational_patterns:
             cleaned_text = re.sub(pattern, "", cleaned_text, flags=re.MULTILINE).strip()
