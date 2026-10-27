@@ -77,14 +77,23 @@ class FullPageLaTeXPipeline:
             self._qwen_vl = QwenVLOCREngine(**kwargs)
         return self._qwen_vl
 
-    def process_full_page(self, image_gray: np.ndarray, roll_number: Optional[str] = None) -> Dict[str, Any]:
+    def process_full_page(
+        self,
+        image_gray: np.ndarray,
+        roll_number: Optional[str] = None,
+        crop_header: bool = False
+    ) -> Dict[str, Any]:
         """
         Processes a full page grayscale image of a handwritten exam script.
         Returns dictionary containing extracted regions and complete .tex file code.
         """
         # Engine: Qwen2.5-VL Vision-Language Model
         if self.engine == "qwen_vl":
-            tex_doc = self.qwen_vl_engine.recognize_page(image_gray, roll_number=roll_number)
+            tex_doc = self.qwen_vl_engine.recognize_page(
+                image_gray,
+                roll_number=roll_number,
+                crop_header=crop_header
+            )
             if tex_doc and len(tex_doc.strip()) > 0:
                 return {
                     "num_regions_segmented": 1,

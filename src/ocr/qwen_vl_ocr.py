@@ -61,8 +61,8 @@ class QwenVLOCREngine:
 
             from transformers import AutoProcessor
             # Dynamic resolution bounds calibrated for Tesla V100 (16GB VRAM)
-            min_pixels = 256 * 28 * 28
-            max_pixels = 1024 * 28 * 28
+            min_pixels = 512 * 28 * 28
+            max_pixels = 1600 * 28 * 28
             try:
                 self.processor = AutoProcessor.from_pretrained(
                     target_path,
@@ -127,7 +127,36 @@ class QwenVLOCREngine:
             self.processor = None
             raise RuntimeError(f"Failed to load Qwen-VL model: {err}")
 
-    def recognize_page(self, image_input: Union[np.ndarray, str, Image.Image], roll_number: Optional[str] = None) -> str:
+    @staticmethod
+    def crop_booklet_instructions(image: Image.Image) -> Image.Image:
+        """
+        If the image contains standard printed answer booklet instructions at the top,
+        crops the designated answering area to concentrate visual tokens onto student handwriting.
+        """
+        img_np = np.array(image)
+        h, w = img_np.shape[:2]
+        if h > w and h > 1500:
+            gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY) if img_np.ndim == 3 else img_np
+            # Search for the horizontal dividing line between 12% and 22% of page height
+            y_start_search, y_end_search = int(0.12 * h), int(0.22 * h)
+            sub = gray[y_start_search:y_end_search, :]
+            proj = np.sum(sub < 100, axis=1)
+            if len(proj) > 0 and np.max(proj) > 0.20 * w:
+                peak_sub_y = int(np.argmax(proj))
+                line_y = y_start_search + peak_sub_y
+                # Buffer down to clear 'Space for answering Question-X only'
+                crop_top = min(line_y + 120, int(0.24 * h))
+                crop_bottom = int(0.97 * h)
+                print(f"[Qwen-VL Preprocessor] Detected exam booklet header at y={line_y}. Cropping answer region [{crop_top}:{crop_bottom}].")
+                return image.crop((0, crop_top, w, crop_bottom))
+        return image
+
+    def recognize_page(
+        self,
+        image_input: Union[np.ndarray, str, Image.Image],
+        roll_number: Optional[str] = None,
+        crop_header: bool = False
+    ) -> str:
         """
         Transcribes a full-page answer script scan directly into complete LaTeX code.
         """
@@ -148,37 +177,42 @@ class QwenVLOCREngine:
         else:
             return ""
 
-        # Resize oversized scan images to max 1280px dimension to avoid quadratic attention OOM on 16GB GPUs
-        max_dim = 1280
+        # Optionally crop the top printed booklet instructions to zoom visual tokens on student ink
+        if crop_header:
+            image = self.crop_booklet_instructions(image)
+
+        # High-resolution ceiling calibrated for Tesla V100 (16GB VRAM)
+        max_dim = 1600
         if max(image.size) > max_dim:
             ratio = max_dim / float(max(image.size))
             new_size = (int(image.size[0] * ratio), int(image.size[1] * ratio))
             image = image.resize(new_size, Image.Resampling.LANCZOS)
 
-        # Generic, strict academic transcription prompt for both handwritten and printed documents
-        prompt = (
-            "You are an expert scientific document transcription system specializing in university mathematics examination papers and solutions.\n"
-            "Your task is to transcribe the mathematics examination document or solution shown in the image (whether handwritten or printed) into valid, compilable, standalone LaTeX code.\n\n"
-            "STRICT TRANSCRIPTION & FIDELITY RULES:\n"
-            "1. STRICT FIDELITY: Transcribe exactly what is written in the document. Do NOT solve the problem, do NOT simplify expressions, do NOT correct mistakes, and do NOT complete unfinished derivations. Preserve the exact mathematical notations, equations, and steps.\n"
-            "2. IGNORE CANCELLED INK: Strictly ignore any scribbles, strike-throughs, or crossed-out mathematical text and equations.\n"
-            "3. MATHEMATICAL ENVIRONMENTS:\n"
-            "   - Use $ ... $ for inline variables, numbers, and expressions inside text sentences.\n"
-            "   - Use displayed math environments \\[ ... \\] or \\begin{align*} ... \\end{align*} for standalone multi-line equations and derivations.\n"
-            "   - Format matrices using standard LaTeX environments: \\begin{bmatrix} ... \\end{bmatrix} or \\begin{pmatrix} ... \\end{pmatrix} with '&' for column separation and '\\\\' for row breaks.\n"
-            "   - Format piecewise definitions or equation systems using \\begin{cases} ... \\end{cases} or \\begin{aligned} ... \\end{aligned}.\n"
-            "   - Transcribe standard linear algebra and calculus symbols accurately (\\in, \\notin, \\subseteq, \\mathbb{R}, \\lambda, \\vec{v}, \\boxed{...}).\n"
-            "4. PRESERVE REASONING: Faithfully transcribe all explanatory prose, theorem statements, basis definitions, and English sentences written in the document.\n"
-            "5. NO MARKDOWN: Output pure LaTeX code ONLY. Do NOT wrap output in markdown code fences (no ```, no ```latex, no ```markdown). Do NOT use markdown headers (no ## or ###). Use standard LaTeX sectioning (\\subsection*{...} or \\textbf{...}).\n"
-            "6. COMPLETE COMPILABLE DOCUMENT: Produce a complete, standalone LaTeX document starting with \\documentclass and ending with \\end{document}."
+        # Strict academic OCR transcription system prompt
+        system_prompt = (
+            "You are an expert mathematical OCR transcription engine specializing in university mathematics examinations and handwritten answer scripts.\n"
+            "Your sole objective is to transcribe ALL handwritten mathematical expressions, derivations, matrices, and prose shown in the image into valid, compilable, standalone LaTeX code.\n\n"
+            "STRICT ZERO-HALLUCINATION & FIDELITY RULES:\n"
+            "1. LITERAL INK ONLY: Transcribe strictly and verbatim what is written on the paper. Do NOT solve the problem, do NOT simplify expressions, do NOT correct arithmetic mistakes, and do NOT complete unfinished derivations.\n"
+            "2. NEVER SUBSTITUTE TOY PROBLEMS: You must NEVER invent or substitute standard textbook problems (e.g. NEVER substitute with 2x2 inverse matrices or diag(1,2,3)). If an augmented matrix or a 4x4 matrix with decimal numbers is present (-1, 1.5, 2.5, 3, etc.), transcribe all 4 rows and all 4 columns exactly.\n"
+            "3. ZERO CONVERSATIONAL CHATTER: Do NOT output any conversational text, introductory remarks (e.g. 'The provided image contains...', 'Here is the transcription...'), bulleted summaries of the image, or concluding sign-offs. Output LaTeX code ONLY.\n"
+            "4. IGNORE SCRATCHES: Ignore scribbles, strike-throughs, or crossed-out mathematical text.\n"
+            "5. MATH ENVIRONMENTS:\n"
+            "   - Use $ ... $ for inline math.\n"
+            "   - Use \\[ ... \\] or \\begin{align*} ... \\end{align*} for displayed equations.\n"
+            "   - Format matrices using standard \\begin{bmatrix} ... \\end{bmatrix} or augmented matrix environments.\n"
+            "6. COMPILABLE DOCUMENT: Produce a complete, standalone LaTeX document starting with \\documentclass[12pt]{article} and ending with \\end{document}."
         )
 
+        user_prompt = "Transcribe every single handwritten equation, matrix, and text line from this examination script image into complete, compilable LaTeX code verbatim. Output LaTeX code only."
+
         messages = [
+            {"role": "system", "content": system_prompt},
             {
                 "role": "user",
                 "content": [
                     {"type": "image", "image": image},
-                    {"type": "text", "text": prompt}
+                    {"type": "text", "text": user_prompt}
                 ]
             }
         ]
@@ -191,7 +225,8 @@ class QwenVLOCREngine:
         gen_kwargs: Dict[str, Any] = {
             "max_new_tokens": 2560,
             "do_sample": False,
-            "repetition_penalty": 1.10,
+            "repetition_penalty": 1.15,
+            "no_repeat_ngram_size": 15,
         }
 
         try:
@@ -254,19 +289,39 @@ class QwenVLOCREngine:
         cleaned_text = re.sub(r"```(?:markdown|latex|tex)?", "", cleaned_text)
         cleaned_text = cleaned_text.replace("```", "").strip()
 
-        # 2. If text contains \end{document}, truncate any leaked trailing tokens after it
+        # 2. Extract strictly from \documentclass if present
+        if "\\documentclass" in cleaned_text:
+            cleaned_text = "\\documentclass" + cleaned_text.split("\\documentclass", 1)[1]
+
+        # 3. Truncate any leaked trailing tokens after \end{document}
         if "\\end{document}" in cleaned_text:
             cleaned_text = cleaned_text.split("\\end{document}")[0] + "\\end{document}"
 
-        # 3. Transpile any residual markdown headings into standard LaTeX sectioning
+        # 4. Strip conversational assistant descriptions & sign-offs
+        conversational_patterns = [
+            r"(?i)^.*?The provided image contains.*?\n+",
+            r"(?i)^.*?Here is a (?:detailed )?description.*?\n+",
+            r"(?i)^.*?The notes (?:cover|start with|are written).*?\n+",
+            r"(?i)\n+.*?If you (?:need|have) (?:further|more) (?:assistance|questions).*?$",
+            r"(?i)\n+.*?feel free to ask.*?$",
+            r"(?i)\n+.*?Given the content and structure of the notes.*?$",
+        ]
+        for pattern in conversational_patterns:
+            cleaned_text = re.sub(pattern, "", cleaned_text, flags=re.MULTILINE).strip()
+
+        # 5. Transpile any residual markdown headings into standard LaTeX sectioning
         cleaned_text = re.sub(r"^###\s+(.*)$", r"\\subsubsection*{\1}", cleaned_text, flags=re.MULTILINE)
         cleaned_text = re.sub(r"^##\s+(.*)$", r"\\subsection*{\1}", cleaned_text, flags=re.MULTILINE)
         cleaned_text = re.sub(r"^#\s+(.*)$", r"\\section*{\1}", cleaned_text, flags=re.MULTILINE)
 
-        # 4. Convert markdown bold (**text**) to LaTeX \textbf{text}
+        # 6. Convert markdown bold (**text**) to LaTeX \textbf{text}
         cleaned_text = re.sub(r"\*\*(.*?)\*\*", r"\\textbf{\1}", cleaned_text)
 
-        # 5. Generic consecutive identical line deduplication within equation/matrix blocks
+        # 7. Collapse excessive repeating token loops (e.g. 0, 0, 0, 0, 0, 0...)
+        cleaned_text = re.sub(r'(?:\b0,\s*){6,}', r'0, \\dots, 0, ', cleaned_text)
+        cleaned_text = re.sub(r'(?:\b0\s+&?\s*){6,}', r'0 & \\dots & 0 ', cleaned_text)
+
+        # 8. Generic consecutive identical line deduplication within equation/matrix blocks
         lines = cleaned_text.splitlines()
         deduped_lines = []
         for line in lines:
@@ -281,7 +336,7 @@ class QwenVLOCREngine:
             deduped_lines.append(line)
         cleaned_text = "\n".join(deduped_lines)
 
-        # 6. Ensure full compilable document structure
+        # 9. Ensure full compilable document structure
         if "\\documentclass" not in cleaned_text:
             roll = roll_number or "Student"
             cleaned_text = (

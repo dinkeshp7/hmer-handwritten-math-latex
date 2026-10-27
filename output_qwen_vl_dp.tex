@@ -1,0 +1,64 @@
+\documentclass[12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb, amsfonts}
+\usepackage{geometry}
+\geometry{a4paper, margin=1in}
+
+\title{MA102 Solutions: MidSem}
+\author{ma1302h:2026-Barsha}
+\date{Sep. 15}
+
+\begin{document}
+\maketitle
+
+\noindent\textbf{JACKPOT:} \{Full solution garners an A on this test. No partial marks. Answer on the last page.\}\\
+Let $a$ be any positive real number. Prove that the function $F : (a, \infty) \to \mathbb{R}$ defined via $F(t) = \int_a^t \frac{1}{x} dx$ is NOT a rational function, i.e., a ratio of two polynomials in $t$.
+
+\subsection*{Question 1}
+For each natural number $n$, let $a_n = \left(1 + \frac{1}{n}\right)^n$.
+
+\begin{enumerate}
+    \item[(a)] Using binomial theorem, show that for each $n$,
+    \[
+    a_n = 1 + \frac{1}{1!} + \frac{1}{2!} \left(1 - \frac{1}{n}\right) + \frac{1}{3!} \left(1 - \frac{1}{n}\right)\left(1 - \frac{2}{n}\right) + \dots + \frac{1}{n!} \left(1 - \frac{1}{n}\right)\dots\left(1 - \frac{n-1}{n}\right)
+    \]
+    \item[(b)] Show that $(a_n)$ is monotonically increasing.
+    \item[(c)] Show that for each $n$,
+    \[
+    a_n \le 1 + \frac{1}{1!} + \frac{1}{2!} + \frac{1}{3!} + \dots + \frac{1}{n!}
+    \]
+    \item[(d)] For $k \ge 1$, notice $k! = 1 \cdot 2 \cdot 3 \dots k \ge 2^{k-1}$. Using this, show that $(a_n)$ is bounded above by 3.
+    \item[(e)] Show that $(a_n)$ converges to a real number, say $e$ such that $2 < e < 3$.
+\end{enumerate}
+
+\subsection*{Solution}
+
+\textbf{(a)} By the Binomial Theorem, for $a_n = \left(1 + \frac{1}{n}\right)^n$:
+\[
+a_n = \sum_{k=0}^n \binom{n}{k} \left(\frac{1}{n}\right)^k = 1 + n \cdot \frac{1}{n} + \sum_{k=2}^n \frac{n(n-1)\dots(n-k+1)}{k!} \frac{1}{n^k}
+\]
+For each $k \ge 2$, rewrite the coefficient:
+\[
+\frac{n(n-1)\dots(n-k+1)}{n^k} = 1 \cdot \left(1 - \frac{1}{n}\right)\left(1 - \frac{2}{n}\right)\dots\left(1 - \frac{k-1}{n}\right)
+\]
+Substituting this back gives the desired expansion:
+\[
+a_n = 1 + \frac{1}{1!} + \frac{1}{2!} \left(1 - \frac{1}{n}\right) + \frac{1}{3!} \left(1 - \frac{1}{n}\right)\left(1 - \frac{2}{n}\right) + \dots + \frac{1}{n!} \left(1 - \frac{1}{n}\right)\dots\left(1 - \frac{n-1}{n}\right)
+\]
+
+\textbf{(b)} Compare $a_n$ and $a_{n+1}$. The expansion of $a_{n+1}$ has $n+2$ terms, whereas $a_n$ has $n+1$ terms. For each $1 \le j < k \le n$, we have $1 - \frac{j}{n} < 1 - \frac{j}{n+1}$. Thus, every individual term in the sum for $a_n$ is strictly smaller than the corresponding term for $a_{n+1}$. In addition, $a_{n+1}$ contains an extra positive term at the end. Therefore, $a_n < a_{n+1}$ for all $n \in \mathbb{N}$, proving $(a_n)$ is monotonically increasing.
+
+\medskip
+\noindent\textit{Alternate Proof for Monotonicity (AM-GM Inequality):} Consider the $n+1$ positive numbers $1, \left(1 + \frac{1}{n}\right), \left(1 + \frac{1}{n}\right), \dots, \left(1 + \frac{1}{n}\right)$ (one 1 and $n$ terms of $1+1/n$). By the AM-GM inequality:
+\[
+\sqrt[n+1]{1 \cdot \left(1 + \frac{1}{n}\right)^n} < \frac{1 + n\left(1 + \frac{1}{n}\right)}{n+1} = \frac{n+2}{n+1} = 1 + \frac{1}{n+1}
+\]
+Raising both sides to the power $n+1$ gives $\left(1 + \frac{1}{n}\right)^n < \left(1 + \frac{1}{n+1}\right)^{n+1}$, i.e., $a_n < a_{n+1}$.
+
+\medskip
+\textbf{(c)} Since $1 - \frac{j}{n} < 1$ for all $1 \le j < k$, each product factor satisfies $\left(1 - \frac{1}{n}\right)\dots\left(1 - \frac{k-1}{n}\right) < 1$. Replacing each such factor by 1 in the expansion of $a_n$ yields:
+\[
+a_n \le 1 + \frac{1}{1!} + \frac{1}{2!} + \frac{1}{3!} + \dots + \frac{1}{n!}
+\]
+
+\end{document}

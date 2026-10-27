@@ -38,6 +38,7 @@ python -c "import torch; print('CUDA Available:', torch.cuda.is_available(), '| 
 IMAGE_PATH="${1:-page-210103096-01.jpg}"
 ENGINE="${2:-qwen_vl}"
 MODEL_NAME="${3:-}"
+CROP_HEADER="${4:-auto}"
 
 # Generate image-specific and engine-specific output filename
 IMAGE_BASENAME=$(basename "$IMAGE_PATH" | sed 's/\.[^.]*$//')
@@ -53,6 +54,21 @@ fi
 CMD="python run_full_page_inference.py --image_path $IMAGE_PATH --engine $ENGINE --output_tex $OUTPUT_TEX"
 if [ -n "$MODEL_NAME" ]; then
     CMD="$CMD --model_name $MODEL_NAME"
+fi
+
+if [ "$CROP_HEADER" = "1" ] || [ "$CROP_HEADER" = "true" ] || [ "$CROP_HEADER" = "yes" ]; then
+    echo "Header Cropping: ENABLED (Forced)"
+    CMD="$CMD --crop_header"
+elif [ "$CROP_HEADER" = "auto" ]; then
+    case "$IMAGE_BASENAME" in
+        *-01)
+            echo "Header Cropping: AUTO-ENABLED for booklet page 1 (maximizes handwriting resolution)"
+            CMD="$CMD --crop_header"
+            ;;
+        *)
+            echo "Header Cropping: DISABLED (Full Page Preserved)"
+            ;;
+    esac
 fi
 
 echo "Executing: $CMD"

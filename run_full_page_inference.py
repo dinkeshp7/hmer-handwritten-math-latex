@@ -50,6 +50,7 @@ def main():
     parser.add_argument("--output_tex", type=str, default="output_solution.tex", help="Path to save output LaTeX file")
     parser.add_argument("--engine", type=str, default="hybrid", choices=["hybrid", "nougat", "qwen_vl"], help="OCR Engine: 'hybrid' (Dual-Head TrOCR+pix2tex), 'nougat' (Meta Nougat), 'qwen_vl' (Qwen2.5-VL SOTA)")
     parser.add_argument("--model_name", type=str, default=None, help="Specific HuggingFace model repo or path (e.g. Qwen/Qwen2.5-VL-7B-Instruct or facebook/nougat-small)")
+    parser.add_argument("--crop_header", action="store_true", help="Crop the top 20% booklet instruction header to maximize resolution on student handwriting")
     args = parser.parse_args()
 
     # Generic dynamic roll number inference from filename if not specified
@@ -102,7 +103,7 @@ def main():
     )
 
     # Process page
-    result = pipeline.process_full_page(img, roll_number=roll_number)
+    result = pipeline.process_full_page(img, roll_number=roll_number, crop_header=args.crop_header)
 
     print(f"Segmented Regions   : {result['num_regions_segmented']}")
     print(f"Processed Lines     : {result['num_lines_processed']}")
