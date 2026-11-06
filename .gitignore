@@ -32,6 +32,7 @@ test_crop.png
 # Binaries and large local toolchains
 bin/
 *.exe
+prof_demo/*.pdf
 
 # Intermediate build artifacts and previews
 scratch_inspect/
@@ -44,3 +45,22 @@ test_beamer/
 *.toc
 *.fls
 *.fdb_latexmk
+
+# Presentation decks, speaker scripts, and slide exports
+BTP_Defense_Presentation_*
+BTP_Defense_*
+BTP_Technical_Encyclopedia*
+BTP_MASTER_REPORT*
+slides_img/
+export_slides.ps1
+convert_pptx_to_pdf.ps1
+generate_defense_pptx.py
+
+# Final BTP Report and build scripts
+report/
+compile_report.bat
+MA4998P_BTP_Report*
+
+# Experimental datasets and raw demo outputs
+student_1_results/
+demo_results/
