@@ -1,0 +1,52 @@
+\documentclass[12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb, amsfonts}
+\usepackage{geometry}
+\geometry{a4paper, margin=1in}
+\title{MA102 Answer Script Solution}
+\author{Roll Number: 210103096}
+\date{\today}
+\begin{document}
+\maketitle
+\section*{Solution}
+
+\subsection*{Question 1}
+
+Given,
+\[ S = \left\{
+-1, -8.5, -2, 0.5, 2.5, 3, 2, 4, 1
+\right\}
+and A = \left[
+\begin{array}{rrrrr}
+-1 & 8.5 & -2 & 0.5 \\
+4.5 & 2.5 & -3 & 3 \\
+-0.5 & -1.5 & 3 & 1
+\end{array}
+\right]
+
+A) To show S is a subspace of M\_n(R), we need to verify that it satisfies the following conditions:
+
+1. The zero matrix must be in S.
+2. If \( x \in S \) and \( y \in S \), then \( x + y \in S \).
+3. If \( x \in S \) and \( y \in S \), then \( xy \in S \).
+
+Let's check each condition.
+
+1. \textbf{The zero matrix must be in S:}
+   \[ \text{Zero matrix} = \begin{pmatrix} 0 & 0 \\ 0 & 0 \end{pmatrix} \]
+   \[ \begin{pmatrix} -1 & 8.5 \\ -2 & 0.5 \end{pmatrix} + \begin{pmatrix} -1 & 8.5 \\ -2 & 0.5 \end{pmatrix} = \begin{pmatrix} -2 & 17 \\ -4 & 0.5 \end{pmatrix} \]
+   Since \(\begin{pmatrix} -2 & 17 \\ -4 & 0.5 \end{pmatrix}\) is not in S, the zero matrix is not in S.
+
+2. \textbf{If \( x \in S \) and \( y \in S \), then \( x + y \in S \):}
+   Let \( x = \begin{pmatrix} -1 \\ -8.5 \end{pmatrix} \) and \( y = \begin{pmatrix} 0.5 \\ 2.5 \end{pmatrix} \)
+   \[ x + y = \begin{pmatrix} -1 \\ -8.5 \end{pmatrix} + \begin{pmatrix} 0.5 \\ 2.5 \end{pmatrix} = \begin{pmatrix} -0.5 \\ -6 \end{pmatrix} \]
+   Since \(-0.5\) is not in S, \(x + y \neq S\).
+
+3. \textbf{If \( x \in S \) and \( y \in S \), then \( xy \in S \):}
+   Let \( x = \begin{pmatrix} -1 \\ -8.5 \end{pmatrix} \) and \( y = \begin{pmatrix} 0.5 \\ 2.5 \end{pmatrix} \)
+   \[ xy = \begin{pmatrix} -1 & 8.5 \\ -8.5 & 0.5 \end{pmatrix} \cdot \begin{pmatrix} 0.5 \\ 2.5 \end{pmatrix} \]
+   Since \( xy \notin S \), condition 3 is not satisfied.
+
+Therefore, \( S \) is not a subspace of \( M_n(\mathbb{R}) \).
+
+\end{document}

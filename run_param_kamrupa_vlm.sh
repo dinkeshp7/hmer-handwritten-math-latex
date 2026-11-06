@@ -11,7 +11,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
-#SBATCH --time=12:00:00
+#SBATCH --time=01:00:00
 #SBATCH --output=/scratch/p.dinkesh/hmer_project/logs/vlm_job_%j.out
 #SBATCH --error=/scratch/p.dinkesh/hmer_project/logs/vlm_job_%j.err
 
@@ -31,13 +31,14 @@ source $ANACONDA_HOME/etc/profile.d/conda.sh 2>/dev/null || true
 source "$SCRATCH_DIR/venv/bin/activate"
 export LD_LIBRARY_PATH=/opt/ohpc/pub/apps/Anaconda3-2023.03/lib:$LD_LIBRARY_PATH
 export TORCH_CUDNN_V8_API_DISABLED=1
+export PYTORCH_CUDA_ALLOC_CONF="max_split_size_mb:64"
 
 echo "CUDA Available Device Check:"
 python -c "import torch; print('CUDA Available:', torch.cuda.is_available(), '| GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'None')"
 
 IMAGE_PATH="${1:-page-210103096-01.jpg}"
 ENGINE="${2:-qwen_vl}"
-MODEL_NAME="${3:-}"
+MODEL_NAME="${3:-/scratch/p.dinkesh/hmer_project/models/qwen_vl_7b}"
 
 # Generate image-specific and engine-specific output filename
 IMAGE_BASENAME=$(basename "$IMAGE_PATH" | sed 's/\.[^.]*$//')
@@ -50,7 +51,13 @@ if [ -n "$MODEL_NAME" ]; then
     echo "Target Model   : $MODEL_NAME"
 fi
 
-CMD="python run_full_page_inference.py --image_path $IMAGE_PATH --engine $ENGINE --output_tex $OUTPUT_TEX"
+CROP_FLAG=""
+if [[ "$IMAGE_PATH" == *"page-"* && "$IMAGE_PATH" != *"_part"* ]]; then
+    CROP_FLAG="--crop_header"
+    echo "Student Exam Script: Enabling automatic header cropping on top booklet."
+fi
+
+CMD="python run_full_page_inference.py --image_path $IMAGE_PATH --engine $ENGINE --output_tex $OUTPUT_TEX --max_dim 1200 $CROP_FLAG"
 if [ -n "$MODEL_NAME" ]; then
     CMD="$CMD --model_name $MODEL_NAME"
 fi

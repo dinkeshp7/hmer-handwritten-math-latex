@@ -1,0 +1,38 @@
+\documentclass[12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb, amsfonts}
+\usepackage{geometry}
+\geometry{a4paper, margin=1in}
+\title{MA102 Answer Script Solution}
+\author{Roll Number: 240104105}
+\date{\today}
+\begin{document}
+\maketitle
+\section*{Solution}
+
+Q-4) Space for answering Question 4 only.
+
+a) fog and gof are identity on V [that is they give some output as input]
+[fog] = [gof] = I (Identity matrix)
+
+This proves that f and g are inverse functions of each other.
+
+Inverse operator of a linear operator is also linear,
+(f(x+y)=f(x)+f(y)) => f^-1(x+y)=f^-1(x)+f^-1(y)
+g is also a linear operator
+
+b) Given: B = [b_1, b_2, ..., b_n]^T is a basis for V.
+c_1b_1 + c_2b_2 + ... + cnbn = O [where e_1, e_2, ..., en^T R
+and c_1 = ... = c_n = 0]
+
+Applying f on both sides:
+f(c_1b_1 + c_2b_2 + ... + cnbn) = f(0)
+By property of linear operator [f(e_1x+e_2y+...+en^T)] = f(e_1x+f(e_2y+...+en^T)]
+This implies that f(b_1), f(b_2), ..., f(b_n) are linearly independent vectors.
+
+Now let any w E V, the function is surjective span(B) = V
+c_1w + c_2b_2 + ... + cnbn = w [c_1, c_2, ..., (n+1)ER]
+Applying f on both sides:
+c_1fo(b_1) + c_2fo(b_2) + ... + cnfn(b_n) = fo(w)
+
+\end{document}

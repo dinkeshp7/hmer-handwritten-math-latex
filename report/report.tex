@@ -1,0 +1,244 @@
+\documentclass[12pt,a4paper]{report}
+
+% Standard Mathematical Packages
+\usepackage{amsmath, amsthm, amssymb, mathrsfs, mathtools}
+\usepackage{array, booktabs}
+\usepackage{setspace}
+\usepackage{graphicx}
+\usepackage{epsfig}
+\usepackage[nottoc]{tocbibind}
+\usepackage[hyphens]{url}
+\usepackage[hidelinks]{hyperref}
+\usepackage{microtype}
+\usepackage[a4paper, top=1in, bottom=1in, left=1.25in, right=1in]{geometry}
+\usepackage{enumitem}
+\setlist{noitemsep, topsep=3pt, parsep=1pt, partopsep=0pt}
+\setlength{\emergencystretch}{3em}
+
+% Header and Margin Settings as per Department Standard
+\renewcommand{\chaptermark}[1]{\markboth{#1}{}}
+\renewcommand{\sectionmark}[1]{\markright{\thesection\ #1}}
+
+% Theorem and Definition Environments
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\newtheorem{notation}[theorem]{Notation}
+
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+% 1.5 Line Spacing Enforced by Department Guidelines
+\onehalfspacing
+
+\begin{document}
+
+% ==============================================================================
+% TITLE PAGE
+% ==============================================================================
+\begin{titlepage}
+\begin{center}
+\vspace*{-1.5cm}
+
+\textbf{\large END-TO-END FULL-PAGE HANDWRITTEN MATHEMATICAL SCRIPT TRANSCRIPTION TO LATEX: A COMPARATIVE STUDY OF MODULAR HYBRID AND MULTIMODAL VISION-LANGUAGE ARCHITECTURES}
+
+\vfill
+
+A Project Report Submitted \\
+for the Course \\[0.3cm]
+
+{\bf\Large MA4998P Project ~I}\\[0.1in]
+
+\vfill
+
+{\large \emph{by}}\\[5pt]
+{\large\bf Dinkesh Pal} \quad {\large (Roll No. 230123021)}\\[3pt]
+{\large\bf Rithvik Ponnapalli} \quad {\large (Roll No. 230123052)}
+
+\vfill
+\includegraphics[height=2.0cm]{iitglogo}
+
+\vspace*{0.3cm}
+
+{\em\large to the}\\[6pt]
+{\bf\large DEPARTMENT OF MATHEMATICS} \\[4pt]
+{\bf\large \mbox{INDIAN INSTITUTE OF TECHNOLOGY GUWAHATI}}\\[4pt]
+{\bf\large GUWAHATI - 781039, INDIA}\\[8pt]
+{\it\large November 2026}
+\vspace*{1.2cm}
+\end{center}
+\end{titlepage}
+
+\clearpage
+
+% ==============================================================================
+% CERTIFICATE PAGE (Strictly Conforming to MA4998P Department Format)
+% ==============================================================================
+\pagenumbering{roman} \setcounter{page}{2}
+\begin{center}
+{\Large{\bf{CERTIFICATE}}}
+\end{center}
+\vspace{0.5cm}
+
+\noindent
+This is to certify that the work contained in this project report entitled 
+\textbf{``End-to-End Full-Page Handwritten Mathematical Script Transcription to LaTeX: A Comparative Study of Modular Hybrid and Multimodal Vision-Language Architectures''} submitted by \textbf{Dinkesh Pal} (Roll No.: 230123021) and \textbf{Rithvik Ponnapalli} (Roll No.: 230123052)
+to the Department of Mathematics, Indian Institute of Technology Guwahati towards partial requirement of
+Bachelor of Technology in Mathematics and Computing has been carried out by them under
+my supervision. \\
+
+\noindent
+It is also certified that, along with literature survey,
+original computational implementations, deep neural network training on high-performance supercomputing infrastructure (PARAM Kamrupa), adversarial error analyses, and empirical benchmark evaluations have been carried out by the students under this project.\\
+
+\vspace{0.3cm}
+\noindent
+Turnitin Similarity: 8 \% and AI content: \_\_ \%
+
+\vspace{1.8cm}
+
+\noindent Guwahati - 781039 \hfill Dinkesh Pal \& Rithvik Ponnapalli
+
+\noindent November 2026 \hfill Project Students
+
+\vspace{1.5cm}
+
+\noindent Guwahati - 781039 \hfill Dr. K. V. Srikanth
+
+\noindent November 2026 \hfill Project Supervisor
+
+\clearpage
+
+% ==============================================================================
+% PROJECT APPROVAL SHEET (Department of Mathematics, IIT Guwahati)
+% ==============================================================================
+\begin{center}
+{\Large{\bf{PROJECT APPROVAL SHEET}}}
+\end{center}
+\vspace{0.6cm}
+
+\noindent
+This project report entitled \textbf{``End-to-End Full-Page Handwritten Mathematical Script Transcription to LaTeX: A Comparative Study of Modular Hybrid and Multimodal Vision-Language Architectures''} submitted by \textbf{Dinkesh Pal} (Roll No.: 230123021) and \textbf{Rithvik Ponnapalli} (Roll No.: 230123052) is approved for the degree of Bachelor of Technology in Mathematics and Computing.
+
+\vspace{1.5cm}
+
+\noindent
+\textbf{Examiners / Evaluation Committee:}
+
+\vspace{1.5cm}
+
+\noindent
+\begin{tabular}{@{}p{7.2cm}p{7.2cm}@{}}
+\textbf{Dr. K. V. Srikanth} & \textbf{Dr. H. Ramesh} \\
+(Supervisor, Assistant Professor) & (Committee Member, Associate Professor) \\
+Department of Mathematics & Department of Mathematics \\
+IIT Guwahati & IIT Guwahati \\[1.8cm]
+\textbf{Dr. Vinay Wagh} & \\
+(Committee Member, Associate Professor) & \\
+Department of Mathematics & \\
+IIT Guwahati & 
+\end{tabular}
+
+\vspace{1.2cm}
+\noindent Date: November 7, 2026 \\
+\noindent Place: IIT Guwahati
+
+\clearpage
+
+% ==============================================================================
+% ACKNOWLEDGEMENTS
+% ==============================================================================
+\begin{center}
+{\Large{\bf{ACKNOWLEDGEMENTS}}}
+\end{center}
+\vspace{0.5cm}
+
+\noindent
+We would like to express our deepest gratitude and sincere appreciation to our project supervisor, \textbf{Dr.~K.~V.~Srikanth}, Assistant Professor, Department of Mathematics, Indian Institute of Technology Guwahati, for his invaluable guidance, continuous encouragement, and profound theoretical insights throughout the course of this B.Tech Project. His unwavering support and critical perspectives on mathematical notation, computer vision pipelines, and experimental methodology have been instrumental in shaping our research direction.
+
+\vspace{0.4cm}
+\noindent
+We extend our heartfelt thanks to our evaluation committee members, \textbf{Dr.~H.~Ramesh}, Associate Professor and DUPC Member Secretary, and \textbf{Dr.~Vinay Wagh}, Associate Professor, Department of Mathematics, IIT Guwahati, for their insightful feedback, rigorous evaluations, and constructive suggestions which greatly enriched the technical rigor and depth of this report.
+
+\vspace{0.4cm}
+\noindent
+We are profoundly grateful to the \textbf{Department of Mathematics} and the \textbf{Indian Institute of Technology Guwahati} for providing an intellectually stimulating environment and making available the necessary institutional facilities, examination archives, and academic resources essential for curating the MA102 examination dataset.
+
+\vspace{0.4cm}
+\noindent
+We also acknowledge the \textbf{Computer \& Communication Centre (CCC)}, IIT Guwahati, and the \textbf{National Supercomputing Mission (NSM)} for providing high-performance computing allocations and technical assistance on the \textbf{PARAM Kamrupa Supercomputer}, without which the deployment and large-scale empirical evaluation of our deep neural networks would not have been possible.
+
+\vspace{0.4cm}
+\noindent
+Finally, we thank our families, friends, and batchmates for their constant encouragement, moral support, and patience throughout our undergraduate studies.
+
+\vspace{1.5cm}
+\noindent Guwahati - 781039 \hfill \textbf{Dinkesh Pal} (Roll No. 230123021) \\
+\noindent November 2026 \hfill \textbf{Rithvik Ponnapalli} (Roll No. 230123052)
+
+\clearpage
+
+% ==============================================================================
+% ABSTRACT
+% ==============================================================================
+\begin{center}
+{\Large{\bf{ABSTRACT}}}
+\end{center}
+\vspace{0.3cm}
+
+Every semester at IIT Guwahati, foundational courses like MA102 (Linear Algebra and Multivariable Calculus) enroll over 900 first-year undergraduates. Across quizzes, mid-semester, and end-semester examinations, this generates more than 13,000 scanned pages of handwritten mathematics that professors and teaching assistants must grade by hand. Reading hundreds of pages of unconstrained, hurried student handwriting leads to severe cognitive eye fatigue and grading variance across evaluators. Our goal in this project is to build an assistive transcription system that converts raw scanned exam pages directly into clean, compilable \LaTeX\ documents, letting evaluators read clear typeset mathematics side-by-side with original scanned ink. Crucially, this is an assistive tool for transcription rather than an automatic grading system: grading authority remains entirely with human instructors, and our pipeline preserves all student errors verbatim without silently ``correcting'' them.
+
+To address this challenge within the privacy constraints of university examinations, we deployed our models entirely on-premise on the PARAM Kamrupa Supercomputer at IIT Guwahati without relying on external commercial cloud APIs. We investigated three distinct architectural paradigms during Phase 1:
+\begin{enumerate}[label=(\alph*)]
+    \item \textbf{A Modular Dual-Head Hybrid Pipeline:} Combining Sauvola adaptive binarization, 1D vertical IoU line grouping ($\text{IoU}_{\text{vert}} \ge 0.35$), an algorithmic matrix parser (\texttt{MatrixGridParser}) using horizontal and vertical projection profiles, a dual-head dispatcher (TrOCR for cursive text and a custom 23.1M parameter DenseNet-Coverage model for mathematical formulas), and a 2D spatial Directed Acyclic Graph (DAG) for reading-order topological linearization.
+    \item \textbf{A Monolithic Multimodal Vision-Language Architecture:} Utilizing Qwen2.5-VL-7B stabilized via Assistant Prefill Locking and repetition penalty calibration, which revealed a severe hardware memory ceiling on Tesla V100 GPUs (16GB VRAM) where uncompressed full-page self-attention matrices ($O(N^2)$ ViT complexity) trigger instant CUDA Out-of-Memory crashes.
+    \item \textbf{A Multi-Band High-Resolution Slicing and Pushdown Automaton Stitching Architecture:} Our master solution that strips printed booklet instructions, divides the active answer canvas into three overlapping horizontal bands with an $8\%$ vertical safety buffer ($\approx 180\,\text{px}$), and processes each band at native resolution ($\text{max\_dim} = 1200\,\text{px}$). This delivers a $3.5\times$ higher token density per line while collapsing peak ViT self-attention memory from $1.30\,\text{GiB}$ down to $\approx 240\,\text{MiB}$, guaranteeing zero CUDA OOM errors.
+\end{enumerate}
+
+The transcribed slices are unified by an automated software engineering pipeline (\texttt{stitch\_latex\_parts.py}) featuring a Context-Free Grammar Deterministic Pushdown Automaton (DPDA) LIFO stack balancer, regex underscore masking (\texttt{ZZMATHBLOCKiZZ}), and direct compilation via embedded Tectonic (XeTeX) in under 5 seconds with a 100\% compilation pass rate. 
+
+Evaluating on authentic IIT Guwahati MA102 examination scripts, our Multi-Band Slicing architecture achieves a breakthrough \textbf{88.24\% Word-for-Word Token Accuracy} (\textbf{11.76\% Token Error Rate}) on complete student mathematical proofs (Roll 240101079), capturing 100\% of the mathematical proof steps verbatim across all three vector subspace axioms. Furthermore, our empirical error analysis on Roll 240122044 identifies and resolves critical edge cases: eliminating conversational ``Over-Helpful Tutor'' hallucination priors via strict negative prompting, and suppressing blank-page autoregressive loops via a zero-cost Laplacian variance ink filter ($\sigma^2(\nabla^2 I) < 1\%$). These Phase 1 accomplishments establish a proven, scalable supercomputing workflow on PARAM Kamrupa, paving the way for Phase 2: supervised QLoRA parameter-efficient fine-tuning and INT4 quantization for high-throughput institutional deployment.
+
+\clearpage
+
+% ==============================================================================
+% PRELIMINARY LISTS
+% ==============================================================================
+\setcounter{tocdepth}{1}
+\setcounter{secnumdepth}{2}
+\tableofcontents
+\clearpage
+\begingroup
+\let\clearpage\relax
+\listoffigures
+\vspace{1.5cm}
+\listoftables
+\endgroup
+
+\newpage
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+% ==============================================================================
+% MAIN CHAPTERS
+% ==============================================================================
+\input{chapter1.tex}
+\input{chapter2.tex}
+\input{chapter3.tex}
+\input{chapter4.tex}
+\input{chapter5.tex}
+\input{chapter6.tex}
+
+% ==============================================================================
+% BIBLIOGRAPHY
+% ==============================================================================
+\bibliographystyle{plain}
+\bibliography{bib.bib}
+
+\end{document}

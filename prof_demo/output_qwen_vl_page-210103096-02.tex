@@ -1,0 +1,66 @@
+\documentclass[12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb, amsfonts}
+\usepackage{geometry}
+\geometry{a4paper, margin=1in}
+\title{MA102 Answer Script Solution}
+\author{Roll Number: 210103096}
+\date{\today}
+\begin{document}
+\maketitle
+\section*{Solution}
+
+\subsection*{Question 1}
+
+The given matrix is:
+
+\[
+A = \left[\begin{array}{ccc}
+-1 & 1.5 & 2.5 \\
+3.5 & -2 & 0.5 \\
+4.5 & 2.5 & -3 \\
+-0.5 & -1.5 & 3
+\end{array}\right]
+\]
+
+To find the basis for the null space of A, we need to perform row reduction on the matrix.
+
+Step-by-step explanation:
+
+1. \textbf{Row Reduction:}
+   - Subtract \( \frac{3}{7} \) times row 1 from row 2.
+   - Subtract \( \frac{9}{7} \) times row 1 from row 3.
+   - Add \( \frac{6}{7} \) times row 1 to row 4.
+
+This results in:
+
+\[
+\left[\begin{array}{ccc}
+1 & -1.5 & -2.5 \\
+0 & 0 & 0 \\
+0 & 0 & 0 \\
+0 & 0 & 0
+\end{array}\right]
+\]
+
+2. \textbf{Identify the Basis:}
+   - The resulting matrix has only one non-zero row, which means that the null space of A is spanned by the first column vector.
+
+Therefore, the basis for the null space of A is:
+
+\[
+\text{Basis B} = \left\{\begin{array}{c}
+1 \\
+0 \\
+0 \\
+0
+\end{array}\right\}
+\]
+
+So, the answer is:
+
+\[
+\boxed{\text{Basis B}}
+\]
+
+\end{document}

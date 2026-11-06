@@ -28,3 +28,19 @@ mat_row_*.png
 new_mat_row_*.png
 real_line*.png
 test_crop.png
+
+# Binaries and large local toolchains
+bin/
+*.exe
+
+# Intermediate build artifacts and previews
+scratch_inspect/
+report_preview/
+test_beamer/
+*.aux
+*.bbl
+*.blg
+*.out
+*.toc
+*.fls
+*.fdb_latexmk

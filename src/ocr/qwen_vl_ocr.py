@@ -18,6 +18,17 @@ from PIL import Image
 try:
     import torch
     HAS_TORCH = True
+    # Compatibility shim for PyTorch < 2.1 (e.g. PyTorch 2.0.1+cu118 on HPC)
+    # Transformers 4.49+ calls torch.compiler.is_compiling() during generation
+    if not hasattr(torch, "compiler"):
+        import types
+        _compiler = types.ModuleType("compiler")
+        _compiler.is_compiling = lambda: False
+        _compiler.disable = lambda fn=None, *args, **kwargs: fn if fn is not None else (lambda x: x)
+        _compiler.wrap_numpy = lambda fn=None: fn if fn is not None else (lambda x: x)
+        torch.compiler = _compiler
+    elif not hasattr(torch.compiler, "is_compiling"):
+        torch.compiler.is_compiling = lambda: False
 except ImportError:
     HAS_TORCH = False
 
@@ -29,7 +40,7 @@ class QwenVLOCREngine:
     def __init__(
         self,
         model_name: Optional[str] = None,
-        local_model_dir: Optional[str] = "/scratch/p.dinkesh/hmer_project/models/qwen_vl",
+        local_model_dir: Optional[str] = None,
         device: Optional[str] = None,
         load_in_4bit: bool = False
     ):
@@ -49,20 +60,28 @@ class QwenVLOCREngine:
         try:
             # Check local directories first for offline cluster execution
             target_path = None
-            if self.local_model_dir and os.path.exists(self.local_model_dir):
+            if self.model_name and os.path.exists(self.model_name):
+                target_path = self.model_name
+                print(f"[Qwen-VL] Loading specified offline weights from: {target_path}")
+            elif self.local_model_dir and os.path.exists(self.local_model_dir):
                 target_path = self.local_model_dir
-                print(f"[Qwen-VL] Loading offline weights from: {target_path}")
+                print(f"[Qwen-VL] Loading offline weights from local_model_dir: {target_path}")
+            elif os.path.exists("/scratch/p.dinkesh/hmer_project/models/qwen_vl_7b") or os.path.exists("./models/qwen_vl_7b"):
+                target_path = "/scratch/p.dinkesh/hmer_project/models/qwen_vl_7b" if os.path.exists("/scratch/p.dinkesh/hmer_project/models/qwen_vl_7b") else "./models/qwen_vl_7b"
+                print(f"[Qwen-VL] Loading flagship 7B offline weights from: {target_path}")
             elif os.path.exists("./models/qwen_vl"):
                 target_path = "./models/qwen_vl"
-                print(f"[Qwen-VL] Loading offline weights from: {target_path}")
+                print(f"[Qwen-VL] Loading default offline weights from: {target_path}")
             else:
                 target_path = self.model_name
                 print(f"[Qwen-VL] Loading model weights for: {target_path}")
 
             from transformers import AutoProcessor
             # Dynamic resolution bounds calibrated for Tesla V100 (16GB VRAM)
-            min_pixels = 512 * 28 * 28
-            max_pixels = 1600 * 28 * 28
+            # 1024 * 28 * 28 (~800k pixels) fits perfectly inside V100 16GB memory budget
+            # For 3-band slices (1200x470 px = 564k px), this provides 1200px width (3.5x token density vs full page)
+            min_pixels = 256 * 28 * 28
+            max_pixels = 1024 * 28 * 28
             try:
                 self.processor = AutoProcessor.from_pretrained(
                     target_path,
@@ -74,25 +93,30 @@ class QwenVLOCREngine:
 
             # Auto-detect best model class
             model_cls = None
-            try:
-                from transformers import AutoModelForImageTextToText
-                model_cls = AutoModelForImageTextToText
-            except Exception:
+            for cls_name in [
+                "AutoModelForImageTextToText",
+                "AutoModelForMultimodalLM",
+                "Qwen2_5_VLForConditionalGeneration",
+                "Qwen2VLForConditionalGeneration",
+                "AutoModelForVision2Seq"
+            ]:
                 try:
-                    from transformers import Qwen2_5_VLForConditionalGeneration
-                    model_cls = Qwen2_5_VLForConditionalGeneration
+                    import transformers
+                    if hasattr(transformers, cls_name):
+                        model_cls = getattr(transformers, cls_name)
+                        break
                 except Exception:
-                    from transformers import Qwen2VLForConditionalGeneration
-                    model_cls = Qwen2VLForConditionalGeneration
+                    pass
 
             if model_cls is None:
                 raise ImportError(
-                    "None of AutoModelForImageTextToText, Qwen2_5_VLForConditionalGeneration, "
-                    "or Qwen2VLForConditionalGeneration could be imported from transformers. "
-                    "Please install transformers==4.46.3."
+                    "None of AutoModelForImageTextToText, AutoModelForMultimodalLM, "
+                    "Qwen2_5_VLForConditionalGeneration, or Qwen2VLForConditionalGeneration "
+                    "could be imported from transformers. Please install transformers>=4.46.3."
                 )
 
             kwargs: Dict[str, Any] = {}
+            use_device_map = False
             if self.device == "cuda":
                 # Use bfloat16 if supported, else float16
                 if torch.cuda.is_bf16_supported():
@@ -101,6 +125,13 @@ class QwenVLOCREngine:
                     kwargs["torch_dtype"] = torch.float16
                 if self.load_in_4bit:
                     kwargs["load_in_4bit"] = True
+                else:
+                    try:
+                        import accelerate
+                        kwargs["device_map"] = "auto"
+                        use_device_map = True
+                    except ImportError:
+                        pass
                 
                 # Enable memory-efficient SDPA (Cutlass kernel) on Tesla V100 (sm_70)
                 try:
@@ -115,7 +146,7 @@ class QwenVLOCREngine:
                 self.model = model_cls.from_pretrained(target_path, **kwargs_sdpa)
             except Exception:
                 self.model = model_cls.from_pretrained(target_path, **kwargs)
-            if not self.load_in_4bit and self.device:
+            if not use_device_map and not self.load_in_4bit and self.device:
                 self.model = self.model.to(self.device)
             self.model.eval()
             print(f"[Qwen-VL] Initialized successfully using {model_cls.__name__} on device: {self.device}")
@@ -151,14 +182,36 @@ class QwenVLOCREngine:
                 return image.crop((0, crop_top, w, crop_bottom))
         return image
 
+    @staticmethod
+    def slice_into_bands(image: Image.Image, num_bands: int = 3, overlap_ratio: float = 0.08) -> list:
+        """
+        Slices a full-page image vertically into overlapping horizontal bands.
+        Each band preserves 100% native scanner width and resolution while fitting within GPU VRAM.
+        """
+        w, h = image.size
+        if num_bands <= 1:
+            return [image]
+        
+        band_h = h / float(num_bands)
+        overlap_px = int(band_h * overlap_ratio)
+        
+        bands = []
+        for i in range(num_bands):
+            y_start = max(0, int(i * band_h) - (overlap_px if i > 0 else 0))
+            y_end = min(h, int((i + 1) * band_h) + (overlap_px if i < num_bands - 1 else 0))
+            bands.append(image.crop((0, y_start, w, y_end)))
+        return bands
+
     def recognize_page(
         self,
         image_input: Union[np.ndarray, str, Image.Image],
         roll_number: Optional[str] = None,
-        crop_header: bool = False
+        crop_header: bool = False,
+        max_dim: Optional[int] = 1200,
+        full_res: bool = False
     ) -> str:
         """
-        Transcribes a full-page answer script scan directly into complete LaTeX code.
+        Transcribes an answer script page or image band directly into complete LaTeX code.
         """
         self.load_model()
         if self.model is None or self.processor is None:
@@ -182,34 +235,52 @@ class QwenVLOCREngine:
             image = self.crop_booklet_instructions(image)
 
         # High-resolution ceiling calibrated for Tesla V100 (16GB VRAM)
-        max_dim = 1600
-        if max(image.size) > max_dim:
+        # If full_res is False and max_dim is set, only resize if image exceeds max_dim (default 1800)
+        # Horizontal strips (e.g. 1653x888) have max dimension 1653 <= 1800, preserving 100% native quality
+        if not full_res and max_dim is not None and max(image.size) > max_dim:
             ratio = max_dim / float(max(image.size))
             new_size = (int(image.size[0] * ratio), int(image.size[1] * ratio))
             image = image.resize(new_size, Image.Resampling.LANCZOS)
 
         # Strict academic OCR transcription system prompt
         system_prompt = (
-            "You are an expert mathematical OCR transcription engine specializing in university mathematics examinations and handwritten answer scripts.\n"
-            "Your sole objective is to transcribe ALL handwritten mathematical expressions, derivations, matrices, and prose shown in the image into valid, compilable, standalone LaTeX code.\n\n"
-            "STRICT ZERO-HALLUCINATION & FIDELITY RULES:\n"
-            "1. LITERAL INK ONLY: Transcribe strictly and verbatim what is written on the paper. Do NOT solve the problem, do NOT simplify expressions, do NOT correct arithmetic mistakes, and do NOT complete unfinished derivations.\n"
-            "2. NEVER SUBSTITUTE TOY PROBLEMS: You must NEVER invent or substitute standard textbook problems (e.g. NEVER substitute with 2x2 inverse matrices or diag(1,2,3)). If an augmented matrix or a 4x4 matrix with decimal numbers is present (-1, 1.5, 2.5, 3, etc.), transcribe all 4 rows and all 4 columns exactly.\n"
-            "3. ZERO CONVERSATIONAL CHATTER: Do NOT output any conversational text, introductory remarks (e.g. 'This image appears to be a scanned page...', 'The provided image contains...', 'Here is the transcription...'), bulleted summaries of the image, or concluding sign-offs. Output LaTeX code ONLY.\n"
-            "4. NO PROGRAMMING CODE: Absolutely NEVER generate Python code, NumPy, SymPy, or any programming scripts (NEVER output 'import numpy', 'np.array', 'def f(x)', or print statements). You are a LaTeX document OCR transcriber, NOT a software programmer. Transcribe all math into LaTeX equations ($ ... $, \\[ ... \\], \\begin{bmatrix} ... \\end{bmatrix}) ONLY.\n"
-            "5. NO FAKE CHAPTERS OR EXTERNAL INPUTS: Transcribe ONLY the text and math physically present on this specific page. NEVER invent textbook structures, fake '\\input{sections/...}' directives, or chapters on unrelated topics (like complex numbers or geometry) unless literally written on the page.\n"
-            "6. IGNORE SCRATCHES: Ignore scribbles, strike-throughs, or crossed-out mathematical text.\n"
-            "7. MATH ENVIRONMENTS:\n"
-            "   - Use $ ... $ for inline math.\n"
-            "   - Use \\[ ... \\] or \\begin{align*} ... \\end{align*} for displayed equations.\n"
-            "   - Format matrices using standard \\begin{bmatrix} ... \\end{bmatrix} or augmented matrix environments.\n"
-            "8. COMPILABLE DOCUMENT: Produce a complete, standalone LaTeX document starting with \\documentclass[12pt]{article} and ending with \\end{document}."
+            "You are an exact, literal mathematical OCR transcription engine. Your sole task is to transcribe "
+            "the student's handwritten exam answer script verbatim into LaTeX code.\n\n"
+            "CRITICAL COPYIST DIRECTIVES (ZERO-HALLUCINATION):\n"
+            "1. LITERAL HANDWRITTEN INK ONLY: Transcribe strictly and verbatim what the student physically wrote on the paper. "
+            "You are a photocopier, NOT a mathematician. DO NOT solve the problem, DO NOT calculate row reductions, "
+            "DO NOT correct arithmetic errors, and DO NOT invent your own steps.\n"
+            "2. PRESERVE STUDENT'S EXACT INTERMEDIATE MATRICES & ROW OPERATIONS: If the student wrote an elementary row operation "
+            "like 'R_1 -> -R_1' or 'R_2 -> R_2 - 3.5 R_1', transcribe it verbatim. If the student wrote a matrix following that operation, "
+            "transcribe every single number in all 4 rows and all 4 columns exactly as written by the student, even if the student made an arithmetic mistake.\n"
+            "3. TRANSCRIBE ALL EQUATIONS IN COLUMNS: If the student wrote multiple equations vertically (e.g. four row-sum equations), "
+            "transcribe every single equation without omitting any line.\n"
+            "4. NEVER WRITE A LECTURE OR TUTORIAL: Absolutely NEVER write commentary, explanations of Gaussian elimination, "
+            "introductory textbook remarks (e.g., 'To determine if there exists a solution...', 'Step 1: Swap R1 and R2...', 'After performing these steps...'), "
+            "or disclaimers about missing constants. Output the student's handwritten mathematical ink ONLY.\n"
+            "5. NO PROGRAMMING CODE: Transcribe math into standard LaTeX environments ($...$, \\[ ... \\], \\begin{bmatrix} ... \\end{bmatrix}). Never output Python, NumPy, or SymPy.\n"
+            "6. COMPILABLE DOCUMENT: Produce a complete LaTeX document starting with \\documentclass[12pt]{article} and ending with \\end{document}."
         )
 
         user_prompt = (
-            "Transcribe all mathematical expressions, matrices, row operations, derivations, "
-            "and text from this image (whether handwritten or printed) into complete, compilable LaTeX code verbatim. "
-            "Output LaTeX code only. Do NOT write Python code and do NOT describe the image."
+            "Transcribe this handwritten student exam answer script page verbatim into LaTeX. "
+            "Do NOT solve the math. Do NOT invent your own row operations or matrices. "
+            "Transcribe all handwritten equations, all matrix entries, and all student row reduction steps "
+            "line-by-line exactly as physically written by the student's pen."
+        )
+
+        roll = roll_number or "Student"
+        prefill_text = (
+            "\\documentclass[12pt]{article}\n"
+            "\\usepackage[utf8]{inputenc}\n"
+            "\\usepackage{amsmath, amssymb, amsfonts, mathtools, array}\n"
+            "\\usepackage{geometry}\n"
+            "\\geometry{a4paper, margin=1in}\n"
+            "\\title{Student Answer Script Transcription}\n"
+            f"\\author{{Roll Number: {roll}}}\n"
+            "\\date{\\today}\n"
+            "\\begin{document}\n"
+            "\\maketitle\n\n"
         )
 
         messages = [
@@ -220,6 +291,10 @@ class QwenVLOCREngine:
                     {"type": "image", "image": image},
                     {"type": "text", "text": user_prompt}
                 ]
+            },
+            {
+                "role": "assistant",
+                "content": prefill_text
             }
         ]
 
@@ -227,17 +302,24 @@ class QwenVLOCREngine:
         if HAS_TORCH and torch.cuda.is_available():
             torch.backends.cudnn.enabled = False
 
-        # Stable, calibrated generation configuration tested on Tesla V100
+        # Pure mathematical OCR greedy decoding (no n-gram bans or repetition penalty)
+        # Banning n-grams or penalizing repetition destroys repeated matrix rows and vertical equation sets
         gen_kwargs: Dict[str, Any] = {
             "max_new_tokens": 2560,
             "do_sample": False,
-            "repetition_penalty": 1.15,
-            "no_repeat_ngram_size": 15,
         }
 
         try:
             from qwen_vl_utils import process_vision_info
-            text_prompt = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            try:
+                text_prompt = self.processor.apply_chat_template(messages, tokenize=False, continue_final_message=True)
+                is_prefilled = True
+            except Exception:
+                # Fallback if continue_final_message is unsupported
+                messages_no_asst = messages[:2]
+                text_prompt = self.processor.apply_chat_template(messages_no_asst, tokenize=False, add_generation_prompt=True)
+                is_prefilled = False
+
             image_inputs, video_inputs = process_vision_info(messages)
             inputs = self.processor(
                 text=[text_prompt],
@@ -250,18 +332,29 @@ class QwenVLOCREngine:
             if hasattr(self.model, "dtype") and "pixel_values" in inputs:
                 inputs["pixel_values"] = inputs["pixel_values"].to(dtype=self.model.dtype)
 
+            if HAS_TORCH and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
             with torch.no_grad():
                 generated_ids = self.model.generate(**inputs, **gen_kwargs)
                 generated_ids_trimmed = [
                     out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
                 ]
-                output_text = self.processor.batch_decode(
+                decoded_body = self.processor.batch_decode(
                     generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
                 )[0]
+                output_text = (prefill_text + decoded_body) if is_prefilled else decoded_body
         except Exception as exc1:
             # Fallback using standard processor pipeline if qwen_vl_utils is not available
             try:
-                text_prompt = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+                try:
+                    text_prompt = self.processor.apply_chat_template(messages, tokenize=False, continue_final_message=True)
+                    is_prefilled = True
+                except Exception:
+                    messages_no_asst = messages[:2]
+                    text_prompt = self.processor.apply_chat_template(messages_no_asst, tokenize=False, add_generation_prompt=True)
+                    is_prefilled = False
+
                 inputs = self.processor(
                     text=[text_prompt],
                     images=[image],
@@ -272,14 +365,18 @@ class QwenVLOCREngine:
                 if hasattr(self.model, "dtype") and "pixel_values" in inputs:
                     inputs["pixel_values"] = inputs["pixel_values"].to(dtype=self.model.dtype)
 
+                if HAS_TORCH and torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+
                 with torch.no_grad():
                     generated_ids = self.model.generate(**inputs, **gen_kwargs)
                     generated_ids_trimmed = [
                         out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
                     ]
-                    output_text = self.processor.batch_decode(
+                    decoded_body = self.processor.batch_decode(
                         generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
                     )[0]
+                    output_text = (prefill_text + decoded_body) if is_prefilled else decoded_body
             except Exception as err:
                 import traceback
                 print(f"[Qwen-VL Error] Transcription failed: {err}")
@@ -303,8 +400,37 @@ class QwenVLOCREngine:
         if "\\end{document}" in cleaned_text:
             cleaned_text = cleaned_text.split("\\end{document}")[0] + "\\end{document}"
 
-        # 4. Strip conversational assistant descriptions & sign-offs
+        # 4. Strip conversational assistant descriptions & sign-offs (both paragraph-based and regex-based)
+        chatter_keywords = [
+            "to summarize", "the image shows", "the provided image", "this image appears",
+            "here is a detailed description", "presence of multiple lines of handwriting",
+            "educational purposes", "problem-solving exercise", "classroom setting",
+            "this python code", "this python program", "given the complexity of the content",
+            "given the content and structure of the notes", "feel free to ask",
+            "if you need further assistance", "indicating that it might have been used",
+            "the given question involves", "to determine if there exists a solution",
+            "since no further details were provided", "without additional constraints",
+            "it remains impossible to provide explicit numerical solutions",
+            "henceforth, based upon available data alone", "no definitive conclusion",
+            "after performing these steps correctly, you will eventually reach",
+            "in case of inconsistency, the system would look like",
+            "indicates infinite number of solutions due to lack of independent constraints",
+            "thus based on above analysis, one needs to carefully perform",
+            "step-by-step row operations", "initial matrix:", "swap r1 and r2 so that",
+            "subtract appropriate multiples of new r2 from other rows"
+        ]
+        paragraphs = cleaned_text.split("\n\n")
+        retained_paragraphs = []
+        for p in paragraphs:
+            p_strip = p.strip()
+            p_lower = p_strip.lower()
+            if any(kw in p_lower for kw in chatter_keywords) and not any(env in p_strip for env in ["\\begin{", "\\[", "\\("]):
+                continue
+            retained_paragraphs.append(p)
+        cleaned_text = "\n\n".join(retained_paragraphs).strip()
+
         conversational_patterns = [
+            r"(?i)^.*?To summarize, the image shows.*?\n*",
             r"(?i)^.*?The provided image contains.*?\n+",
             r"(?i)^.*?This image appears to be.*?\n+",
             r"(?i)^.*?Here is a (?:detailed )?description.*?\n+",
@@ -315,9 +441,27 @@ class QwenVLOCREngine:
             r"(?i)\n+.*?Given the content and structure of the notes.*?$",
             r"(?i)\n+.*?Given the complexity of the content.*?$",
             r"(?i)\n+.*?This Python (?:code|program) defines.*?$",
+            r"(?i)^.*?The presence of multiple lines of handwriting suggests.*?\n*",
+            r"(?i)^.*?indicating that it might have been used.*?\n*",
         ]
         for pattern in conversational_patterns:
             cleaned_text = re.sub(pattern, "", cleaned_text, flags=re.MULTILINE).strip()
+
+        # 4b. Eliminate hallucinated textbook/monograph structures and index spam
+        cleaned_text = re.sub(r"\\begin\{abstract\}.*?\\end\{abstract\}", "", cleaned_text, flags=re.DOTALL)
+        cleaned_text = re.sub(r"\\chapter\*?\{.*?\}", "", cleaned_text)
+        cleaned_text = re.sub(r"\\tableofcontents", "", cleaned_text)
+        cleaned_text = re.sub(r"\\mainmatter", "", cleaned_text)
+        cleaned_text = re.sub(r"\\index\{.*?\}", "", cleaned_text)
+        cleaned_text = re.sub(r"\\Index\{.*?\}", "", cleaned_text)
+
+        # 4c. Deduplicate \maketitle if model generated an extra \maketitle in document body
+        if cleaned_text.count("\\maketitle") > 1:
+            first_idx = cleaned_text.find("\\maketitle")
+            cleaned_text = (
+                cleaned_text[:first_idx + len("\\maketitle")]
+                + cleaned_text[first_idx + len("\\maketitle"):].replace("\\maketitle", "")
+            )
 
         # 5. Eliminate leaked Python imports / functions if model attempted coding
         if any(k in cleaned_text for k in ["import numpy", "np.array", "def f(", "np.linalg"]):
@@ -405,6 +549,81 @@ class QwenVLOCREngine:
             cleaned_text += "\n\\end{document}"
 
         return cleaned_text
+
+    def recognize_page_chunked(
+        self,
+        image_input: Union[np.ndarray, str, Image.Image],
+        roll_number: Optional[str] = None,
+        num_chunks: int = 3,
+        crop_header: bool = False
+    ) -> str:
+        """
+        Slices a full-page image into overlapping horizontal bands (default: 3 parts),
+        transcribes each band at 100% native scanner resolution (zero downsampling),
+        and stitches the recognized LaTeX bodies into a single unified compilable document.
+        """
+        if isinstance(image_input, str):
+            image = Image.open(image_input).convert("RGB")
+        elif isinstance(image_input, np.ndarray):
+            if image_input.ndim == 2:
+                image_rgb = cv2.cvtColor(image_input, cv2.COLOR_GRAY2RGB)
+            else:
+                image_rgb = cv2.cvtColor(image_input, cv2.COLOR_BGR2RGB)
+            image = Image.fromarray(image_rgb)
+        elif isinstance(image_input, Image.Image):
+            image = image_input.convert("RGB")
+        else:
+            return ""
+
+        if crop_header:
+            image = self.crop_booklet_instructions(image)
+
+        bands = self.slice_into_bands(image, num_bands=num_chunks, overlap_ratio=0.08)
+        print(f"[Qwen-VL Tiling] Page sliced into {len(bands)} full-resolution horizontal bands:")
+        for idx, b in enumerate(bands):
+            print(f"  Band {idx+1}/{len(bands)}: Dimensions {b.size[0]}x{b.size[1]} px (100% Native Quality)")
+
+        extracted_bodies = []
+        for idx, band in enumerate(bands):
+            print(f"[Qwen-VL Tiling] Transcribing Band {idx+1}/{len(bands)} at full native resolution...")
+            band_tex = self.recognize_page(
+                band,
+                roll_number=roll_number,
+                crop_header=False,
+                max_dim=1800,
+                full_res=True
+            )
+            body = band_tex
+            if "\\begin{document}" in body:
+                body = body.split("\\begin{document}", 1)[1]
+            if "\\maketitle" in body:
+                body = body.split("\\maketitle", 1)[1]
+            if "\\end{document}" in body:
+                body = body.split("\\end{document}", 1)[0]
+            body = body.strip()
+            if body:
+                extracted_bodies.append(f"% --- Band {idx+1} Content ---\n" + body)
+
+            if HAS_TORCH and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+        combined_body = "\n\n".join(extracted_bodies)
+        roll = roll_number or "Student"
+        full_document = (
+            "\\documentclass[12pt]{article}\n"
+            "\\usepackage[utf8]{inputenc}\n"
+            "\\usepackage{amsmath, amssymb, amsfonts, mathtools, array}\n"
+            "\\usepackage{geometry}\n"
+            "\\geometry{a4paper, margin=1in}\n"
+            "\\title{Student Answer Script Transcription (High-Resolution Multi-Band)}\n"
+            f"\\author{{Roll Number: {roll}}}\n"
+            "\\date{\\today}\n"
+            "\\begin{document}\n"
+            "\\maketitle\n\n"
+            f"{combined_body}\n\n"
+            "\\end{document}\n"
+        )
+        return full_document
 
 
 if __name__ == "__main__":

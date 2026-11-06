@@ -31,6 +31,22 @@ for candidate in [
         except Exception:
             pass
 
+# Compatibility shim for PyTorch < 2.1 (e.g. PyTorch 2.0.1+cu118 on HPC)
+# Transformers 4.49+ calls torch.compiler.is_compiling() during generation
+try:
+    import torch
+    if not hasattr(torch, "compiler"):
+        import types
+        _compiler = types.ModuleType("compiler")
+        _compiler.is_compiling = lambda: False
+        _compiler.disable = lambda fn=None, *args, **kwargs: fn if fn is not None else (lambda x: x)
+        _compiler.wrap_numpy = lambda fn=None: fn if fn is not None else (lambda x: x)
+        torch.compiler = _compiler
+    elif not hasattr(torch.compiler, "is_compiling"):
+        torch.compiler.is_compiling = lambda: False
+except ImportError:
+    pass
+
 import cv2
 import numpy as np
 
@@ -51,6 +67,9 @@ def main():
     parser.add_argument("--engine", type=str, default="hybrid", choices=["hybrid", "nougat", "qwen_vl"], help="OCR Engine: 'hybrid' (Dual-Head TrOCR+pix2tex), 'nougat' (Meta Nougat), 'qwen_vl' (Qwen2.5-VL SOTA)")
     parser.add_argument("--model_name", type=str, default=None, help="Specific HuggingFace model repo or path (e.g. Qwen/Qwen2.5-VL-7B-Instruct or facebook/nougat-small)")
     parser.add_argument("--crop_header", action="store_true", help="Crop the top 20% booklet instruction header to maximize resolution on student handwriting")
+    parser.add_argument("--num_chunks", type=int, default=1, help="Number of horizontal bands to slice image into (e.g. 3 for high-res 100% native quality without VRAM OOM)")
+    parser.add_argument("--max_dim", type=int, default=1200, help="Maximum image dimension ceiling (default: 1200 calibrated for Tesla V100 16GB)")
+    parser.add_argument("--full_res", action="store_true", help="Bypass any resolution downsampling and feed 100% native scanner pixels")
     args = parser.parse_args()
 
     # Generic dynamic roll number inference from filename if not specified
@@ -71,10 +90,16 @@ def main():
     if args.model_name:
         print(f"Model Specified     : {args.model_name}")
 
-    # Check for image file
+    # Check for image file (load full color to preserve visual fidelity for VLMs)
+    def load_img(path: str):
+        im = cv2.imread(path, cv2.IMREAD_COLOR)
+        if im is None:
+            im = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+        return im
+
     img = None
     if os.path.exists(args.image_path):
-        img = cv2.imread(args.image_path, cv2.IMREAD_GRAYSCALE)
+        img = load_img(args.image_path)
     
     if img is None:
         # Search common paths
@@ -86,7 +111,7 @@ def main():
         ]
         for c in candidates:
             if os.path.exists(c):
-                img = cv2.imread(c, cv2.IMREAD_GRAYSCALE)
+                img = load_img(c)
                 if img is not None:
                     print(f"Loaded image from candidate path: {c}")
                     break
@@ -99,7 +124,7 @@ def main():
                 matches = list(Path(search_root).glob(f"**/{base_name}"))
                 if matches:
                     matched_path = str(matches[0])
-                    img = cv2.imread(matched_path, cv2.IMREAD_GRAYSCALE)
+                    img = load_img(matched_path)
                     if img is not None:
                         print(f"Discovered image via recursive lookup: {matched_path}")
                         break
@@ -116,7 +141,14 @@ def main():
     )
 
     # Process page
-    result = pipeline.process_full_page(img, roll_number=roll_number, crop_header=args.crop_header)
+    result = pipeline.process_full_page(
+        img,
+        roll_number=roll_number,
+        crop_header=args.crop_header,
+        num_chunks=args.num_chunks,
+        max_dim=args.max_dim,
+        full_res=args.full_res
+    )
 
     print(f"Segmented Regions   : {result['num_regions_segmented']}")
     print(f"Processed Lines     : {result['num_lines_processed']}")

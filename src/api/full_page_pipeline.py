@@ -117,19 +117,33 @@ class FullPageLaTeXPipeline:
         self,
         image_gray: np.ndarray,
         roll_number: Optional[str] = None,
-        crop_header: bool = False
+        crop_header: bool = False,
+        num_chunks: int = 1,
+        max_dim: Optional[int] = 1200,
+        full_res: bool = False
     ) -> Dict[str, Any]:
         """
-        Processes a full page grayscale image of a handwritten exam script.
+        Processes a full page image of a handwritten exam script.
         Returns dictionary containing extracted regions and complete .tex file code.
+        Supports multi-band chunking for high-resolution 100% native quality transcription.
         """
         # Engine: Qwen2.5-VL Vision-Language Model
         if self.engine == "qwen_vl":
-            tex_doc = self.qwen_vl_engine.recognize_page(
-                image_gray,
-                roll_number=roll_number,
-                crop_header=crop_header
-            )
+            if num_chunks > 1:
+                tex_doc = self.qwen_vl_engine.recognize_page_chunked(
+                    image_gray,
+                    roll_number=roll_number,
+                    num_chunks=num_chunks,
+                    crop_header=crop_header
+                )
+            else:
+                tex_doc = self.qwen_vl_engine.recognize_page(
+                    image_gray,
+                    roll_number=roll_number,
+                    crop_header=crop_header,
+                    max_dim=max_dim,
+                    full_res=full_res
+                )
             if tex_doc and len(tex_doc.strip()) > 0:
                 return {
                     "num_regions_segmented": 1,
@@ -163,8 +177,13 @@ class FullPageLaTeXPipeline:
             )
 
         # Default Engine: Hybrid Line Segmentation + Dual-Head Recognition
+        if image_gray.ndim == 3:
+            img_2d = cv2.cvtColor(image_gray, cv2.COLOR_BGR2GRAY)
+        else:
+            img_2d = image_gray
+
         # 1. Preprocessing & Deskewing
-        enhanced_img, binarized_mask = self.preprocessor.process_page(image_gray)
+        enhanced_img, binarized_mask = self.preprocessor.process_page(img_2d)
 
         # 2. Line & Region Segmentation
         regions = self.segmenter.segment_page(enhanced_img, binarized_mask)
